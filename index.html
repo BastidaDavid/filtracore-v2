@@ -1,0 +1,770 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>FiltraCore</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header class="app-header">
+    <div class="brand">
+      <img src="img/logo.png" alt="FiltraCore Logo" class="brand-logo" />
+      <div>
+        <h1>FiltraCore</h1>
+        <p>Filter Intelligence System</p>
+      </div>
+    </div>
+
+    <nav class="main-nav">
+      <a href="#dashboard" class="active">Dashboard</a>
+      <a href="#machines">Machines</a>
+      <a href="#inventory">Inventory</a>
+      <a href="#filters">Filters</a>
+      <a href="#maintenance">Maintenance</a>
+      <a href="#reports">Reports</a>
+    </nav>
+  </header>
+
+  <main class="app-layout">
+    <section id="dashboard" class="section-card hero-section">
+      <div>
+        <span class="section-label"></span>
+        <h2>Dashboard</h2>
+        <p></p>
+      </div>
+
+      <div class="quick-actions">
+        <button id="add-machine" type="button">Add Machine</button>
+        <button id="add-filter" type="button" class="secondary-btn">Install Filter</button>
+      </div>
+    </section>
+
+    <section class="kpi-grid">
+      <div class="kpi-card">
+        <span>Total Machines</span>
+        <strong>0</strong>
+      </div>
+
+      <div class="kpi-card">
+        <span>Active Filters</span>
+        <strong>0</strong>
+      </div>
+
+      <button class="kpi-card warning clickable-kpi" id="dashboard-machines-risk-filter" type="button">
+        <span>Machines at Risk</span>
+        <strong id="dashboard-machines-risk">0</strong>
+        <small>View details</small>
+      </button>
+
+      <button class="kpi-card critical clickable-kpi" id="dashboard-alerts-filter" type="button">
+        <span>Intelligence Alerts</span>
+        <strong id="dashboard-alerts-count">0</strong>
+        <small>View details</small>
+      </button>
+
+      <div class="kpi-card">
+        <span>Total Filter Spend</span>
+        <strong id="total-spend">$0.00</strong>
+      </div>
+
+      <div class="kpi-card">
+        <span>Avg Filter Cost</span>
+        <strong id="avg-filter-cost">$0.00</strong>
+      </div>
+
+      <div class="kpi-card">
+        <span>Estimated Monthly Spend</span>
+        <strong id="monthly-spend">$0.00</strong>
+      </div>
+
+      <div class="kpi-card">
+        <span>Estimated Annual Spend</span>
+        <strong id="annual-spend">$0.00</strong>
+      </div>
+      <div class="kpi-card warning">
+        <span>Risk Exposure</span>
+        <strong id="risk-exposure">$0.00</strong>
+      </div>
+      <div class="kpi-card success">
+        <span>Potential Savings</span>
+        <strong id="potential-savings">$0.00</strong>
+      </div>
+      <button class="kpi-card manual-kpi clickable-kpi" id="open-manual-card" type="button">
+        <span>User Manual</span>
+        <strong>Book</strong>
+        <small>How to use FiltraCore</small>
+      </button>
+    </section>
+
+
+    <section id="machines" class="section-card module-section machines-section" style="display:none;">
+      <div class="section-header module-hero">
+        <div class="module-title-row">
+          <div class="module-icon">🏭</div>
+          <div>
+            <span class="section-label">Asset Layer</span>
+            <h2>Machines</h2>
+            <p>Register and manage all machines connected to filter operations.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="module-kpi-row machines-kpis">
+        <div class="module-kpi-card">
+          <span>Total Machines</span>
+          <strong id="machines-total-kpi">0</strong>
+          <small>Registered assets</small>
+        </div>
+
+        <div class="module-kpi-card success">
+          <span>With Filters</span>
+          <strong id="machines-with-filters-kpi">0</strong>
+          <small>Linked to filter lifecycle</small>
+        </div>
+
+        <div class="module-kpi-card warning">
+          <span>Need Setup</span>
+          <strong id="machines-setup-kpi">0</strong>
+          <small>No filter assigned yet</small>
+        </div>
+
+        <button class="module-kpi-card critical clickable-kpi" id="machines-risk-filter" type="button">
+          <span>At Risk</span>
+          <strong id="machines-risk-kpi">0</strong>
+          <small>View details</small>
+        </button>
+      </div>
+
+      <div class="module-workspace machines-workspace">
+        <div class="module-panel form-panel">
+          <div class="panel-heading panel-heading-clean">
+            <h3>➕ Add Machine</h3>
+            <p>Create a machine before assigning filters.</p>
+          </div>
+      
+      <form id="machine-form" class="module-form premium-form">
+        <div class="form-field">
+          <label for="machine-name">Machine Name</label>
+          <input type="text" id="machine-name" placeholder="Example: Ice Machine 1" required />
+        </div>
+
+        <div class="form-field">
+          <label for="machine-type">Machine Type</label>
+          <input type="text" id="machine-type" placeholder="Coffee, Ice, Soda..." required />
+        </div>
+
+        <div class="form-field">
+          <label for="machine-location">Location</label>
+          <input type="text" id="machine-location" placeholder="Example: Main Bar" required />
+        </div>
+
+        <button type="submit">Save Machine</button>
+      </form>
+        </div>
+
+        <div class="module-panel list-panel">
+          <div class="panel-heading panel-heading-clean">
+            <h3>📋 Machine List</h3>
+            <p>Machines currently registered in the system.</p>
+          </div>
+
+          <div class="machine-toolbar">
+            <input 
+              type="search" 
+              id="machine-search" 
+              placeholder="Search machine, type, location, filter or status..."
+              autocomplete="off"
+            />
+            <span id="machine-results-count">0 results</span>
+          </div>
+
+          <div id="machines-list" class="module-list premium-list machines-list-clean">
+            <p class="empty-state">No machines registered yet.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="inventory" class="section-card module-section inventory-section" style="display:none;">
+      <div class="section-header module-hero">
+        <div class="module-title-row">
+          <div class="module-icon">📦</div>
+          <div>
+            <span class="section-label">Inventory Layer</span>
+            <h2>Filter Inventory</h2>
+            <p>Manage filter products, stock levels, unit costs, and reorder points.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="module-kpi-row inventory-kpis">
+        <div class="module-kpi-card">
+          <span>Total Items</span>
+          <strong id="inventory-total-kpi">0</strong>
+          <small>Products registered</small>
+        </div>
+
+        <div class="module-kpi-card warning">
+          <span>Low Stock</span>
+          <strong id="inventory-low-stock-kpi">0</strong>
+          <small>At or below reorder level</small>
+        </div>
+
+        <div class="module-kpi-card success">
+          <span>Inventory Value</span>
+          <strong id="inventory-value-kpi">$0.00</strong>
+          <small>Stock × unit cost</small>
+        </div>
+
+        <div class="module-kpi-card critical">
+          <span>Reorder Needed</span>
+          <strong id="inventory-reorder-kpi">0</strong>
+          <small>Needs purchasing attention</small>
+        </div>
+      </div>
+
+      <div class="module-workspace inventory-workspace">
+        <div class="module-panel form-panel">
+          <div class="panel-heading panel-heading-clean">
+            <h3>➕ Add Inventory Item</h3>
+            <p>Add a filter product before assigning it to machines.</p>
+          </div>
+
+          <form id="inventory-form" class="module-form premium-form inventory-form-grid">
+            <div class="form-field">
+              <label for="inventory-name">Filter Name</label>
+              <input type="text" id="inventory-name" placeholder="Example: Ice Filter Pro" required />
+            </div>
+
+            <div class="form-field">
+              <label for="inventory-category">Category</label>
+              <input type="text" id="inventory-category" placeholder="Coffee, Ice, Soda..." required />
+            </div>
+
+            <div class="form-field">
+              <label for="inventory-stock">Stock Quantity</label>
+              <input type="number" id="inventory-stock" placeholder="Example: 5" required />
+            </div>
+
+            <div class="form-field">
+              <label for="inventory-cost">Unit Cost</label>
+              <input type="number" id="inventory-cost" placeholder="Unit cost ($)" step="0.01" required />
+            </div>
+
+            <div class="form-field">
+              <label for="inventory-reorder">Reorder Level</label>
+              <input type="number" id="inventory-reorder" placeholder="Example: 2" required />
+            </div>
+
+            <button type="submit">Save Item</button>
+          </form>
+        </div>
+
+        <div class="module-panel list-panel">
+          <div class="panel-heading panel-heading-clean">
+            <h3>📦 Inventory List</h3>
+            <p>Current filter products available for installation.</p>
+          </div>
+
+          <div class="inventory-toolbar">
+            <input 
+              type="search" 
+              id="inventory-search" 
+              placeholder="Search filter, category, stock or status..."
+              autocomplete="off"
+            />
+            <span id="inventory-results-count">0 results</span>
+          </div>
+
+          <div id="inventory-list" class="module-list premium-list inventory-list-clean">
+            <p class="empty-state">No inventory items registered yet.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="filters" class="section-card module-section filters-section" style="display:none;">
+      <div class="section-header module-hero">
+        <div class="module-title-row">
+          <div class="module-icon">💧</div>
+          <div>
+            <span class="section-label">Lifecycle</span>
+            <h2>Filters</h2>
+            <p>Assign filters to machines, monitor PSI, and track lifecycle status.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="module-kpi-row filters-kpis">
+        <div class="module-kpi-card">
+          <span>Installed Filters</span>
+          <strong id="filters-total-kpi">0</strong>
+          <small>Currently assigned</small>
+        </div>
+
+        <button class="module-kpi-card success clickable-kpi" id="filters-healthy-filter" type="button">
+          <span>Healthy</span>
+          <strong id="filters-healthy-kpi">0</strong>
+          <small>View healthy filters</small>
+        </button>
+
+        <button class="module-kpi-card warning clickable-kpi" id="filters-watch-filter" type="button">
+          <span>Watch</span>
+          <strong id="filters-watch-kpi">0</strong>
+          <small>View filters needing attention</small>
+        </button>
+
+        <button class="module-kpi-card critical clickable-kpi" id="filters-critical-filter" type="button">
+          <span>Critical</span>
+          <strong id="filters-critical-kpi">0</strong>
+          <small>View critical filters</small>
+        </button>
+      </div>
+
+      <div class="module-workspace filters-workspace">
+        <div class="module-panel form-panel">
+          <div class="panel-heading panel-heading-clean">
+            <h3>➕ Assign Filter</h3>
+            <p>Install an inventory filter into a registered machine.</p>
+          </div>
+
+          <form id="filter-form" class="module-form premium-form filter-form-clean">
+            <div class="form-field">
+              <label for="filter-machine">Machine</label>
+              <select id="filter-machine" required>
+                <option value="">Select machine</option>
+              </select>
+            </div>
+
+            <div class="form-field">
+              <label for="filter-product">Filter Product</label>
+              <select id="filter-product" required>
+                <option value="">Select filter product</option>
+              </select>
+            </div>
+
+            <div class="form-field">
+              <label for="filter-psi">Current PSI</label>
+              <input type="number" id="filter-psi" placeholder="Optional baseline PSI" />
+            </div>
+
+            <button type="submit">Assign Filter</button>
+          </form>
+        </div>
+
+        <div class="module-panel list-panel">
+          <div class="panel-heading panel-heading-clean">
+            <h3>💧 Installed Filters</h3>
+            <p>Compact lifecycle view for every installed filter.</p>
+          </div>
+
+          <div class="filters-toolbar">
+            <input 
+              type="search" 
+              id="filters-search" 
+              placeholder="Search machine, filter, PSI or status..."
+              autocomplete="off"
+            />
+            <span id="filters-results-count">0 results</span>
+          </div>
+
+          <div id="filters-list" class="module-list premium-list filters-list-clean">
+            <p class="empty-state">No filters registered yet.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="maintenance" class="section-card module-section maintenance-section" style="display:none;">
+      <div class="section-header module-hero">
+        <div class="module-title-row">
+          <div class="module-icon">🛠️</div>
+          <div>
+            <span class="section-label">Maintenance Layer</span>
+            <h2>Maintenance</h2>
+            <p>Resolve alerts, log inspections, and document filter replacement actions.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="module-kpi-row maintenance-kpis">
+        <div class="module-kpi-card">
+          <span>Total Records</span>
+          <strong id="maintenance-total-kpi">0</strong>
+          <small>Maintenance actions logged</small>
+        </div>
+
+        <div class="module-kpi-card warning">
+          <span>Warning Reviews</span>
+          <strong id="maintenance-warning-kpi">0</strong>
+          <small>Preventive reviews</small>
+        </div>
+
+        <div class="module-kpi-card critical">
+          <span>Critical Inspections</span>
+          <strong id="maintenance-critical-kpi">0</strong>
+          <small>Immediate attention</small>
+        </div>
+
+        <div class="module-kpi-card success">
+          <span>Replacements</span>
+          <strong id="maintenance-replacement-kpi">0</strong>
+          <small>Filters replaced</small>
+        </div>
+      </div>
+
+      <div class="module-workspace maintenance-workspace">
+        <div class="module-panel form-panel">
+          <div class="panel-heading panel-heading-clean">
+            <h3>🛠️ Register Maintenance</h3>
+            <p>Document the action taken to resolve or prevent filter issues.</p>
+          </div>
+
+          <form id="maintenance-form" class="module-form premium-form maintenance-form-grid">
+            <div class="form-field">
+              <label for="maintenance-machine">Machine</label>
+              <select id="maintenance-machine" required>
+                <option value="">Select machine</option>
+              </select>
+            </div>
+
+            <div class="form-field">
+              <label for="maintenance-filter">Filter</label>
+              <select id="maintenance-filter">
+                <option value="">Select filter (optional)</option>
+              </select>
+            </div>
+
+            <div class="form-field">
+              <label for="maintenance-type">Maintenance Type</label>
+              <select id="maintenance-type" required>
+                <option value="">Select maintenance type</option>
+                <option value="General Inspection">General Inspection</option>
+                <option value="Warning Review">Warning Review</option>
+                <option value="Critical Inspection">Critical Inspection</option>
+                <option value="Filter Replacement">Filter Replacement</option>
+              </select>
+            </div>
+
+            <div class="form-field">
+              <label for="maintenance-replacement-product">Replacement Filter</label>
+              <select id="maintenance-replacement-product">
+                <option value="">Only select if replacing filter</option>
+              </select>
+            </div>
+
+            <div class="form-field">
+              <label for="maintenance-current-psi">Current PSI</label>
+              <input type="text" id="maintenance-current-psi" placeholder="Select a filter to view PSI" readonly />
+            </div>
+
+            <div class="form-field">
+              <label for="maintenance-corrected-psi">Corrected PSI</label>
+              <input type="number" id="maintenance-corrected-psi" placeholder="Enter new PSI after maintenance" />
+            </div>
+
+            <div class="form-field form-field-wide maintenance-psi-chart-field">
+              <label>PSI History</label>
+              <div id="maintenance-psi-chart" class="maintenance-psi-chart">
+                <p class="empty-state">Select a filter to view PSI history.</p>
+              </div>
+            </div>
+
+            <div class="form-field">
+              <label for="maintenance-date">Date</label>
+              <input type="date" id="maintenance-date" required />
+            </div>
+
+            <div class="form-field form-field-wide">
+              <label for="maintenance-notes">Notes</label>
+              <input type="text" id="maintenance-notes" placeholder="Notes, root cause, or correction taken..." />
+            </div>
+
+            <button type="submit">Log Maintenance</button>
+          </form>
+        </div>
+
+        <div class="module-panel list-panel">
+          <div class="panel-heading panel-heading-clean">
+            <h3>📋 Maintenance History</h3>
+            <p>Review completed maintenance actions and operational corrections.</p>
+          </div>
+
+          <div class="maintenance-toolbar">
+            <input 
+              type="search" 
+              id="maintenance-search" 
+              placeholder="Search machine, filter, type, notes or date..."
+              autocomplete="off"
+            />
+            <span id="maintenance-results-count">0 results</span>
+          </div>
+
+          <div class="maintenance-report-actions">
+            <button id="generate-maintenance-report" type="button">Generate Maintenance Report</button>
+            <button id="print-maintenance-report" type="button" class="secondary-btn">Print / Save PDF</button>
+            <button id="close-maintenance-report" type="button" class="secondary-btn" style="display:none;">Close Report</button>
+          </div>
+
+          <div id="maintenance-report-output-card" class="maintenance-report-output-card" style="display:none;">
+            <div class="panel-heading panel-heading-clean">
+              <h3>📄 Maintenance Report</h3>
+              <p>Summary of pending maintenance, completed actions, PSI corrections, and replacements.</p>
+            </div>
+            <div id="maintenance-report-output" class="maintenance-report-output"></div>
+          </div>
+
+          <div id="maintenance-list" class="module-list premium-list maintenance-list-clean">
+            <p class="empty-state">No maintenance records yet.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="reports" class="section-card module-section reports-section" style="display:none;">
+      <div class="section-header module-hero">
+        <div class="module-title-row">
+          <div class="module-icon">📊</div>
+          <div>
+            <span class="section-label">Executive Intelligence</span>
+            <h2>Reports</h2>
+            <p>Review financial performance, operational risk, inventory status, and maintenance activity.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="module-kpi-row reports-kpis">
+        <div class="module-kpi-card">
+          <span>Total Spend</span>
+          <strong id="reports-total-spend">$0.00</strong>
+          <small>Installed filter cost</small>
+        </div>
+
+        <div class="module-kpi-card success">
+          <span>Potential Savings</span>
+          <strong id="reports-potential-savings">$0.00</strong>
+          <small>Avoided operational exposure</small>
+        </div>
+
+        <div class="module-kpi-card warning">
+          <span>Risk Exposure</span>
+          <strong id="reports-risk-exposure">$0.00</strong>
+          <small>Estimated active risk</small>
+        </div>
+
+        <div class="module-kpi-card critical">
+          <span>Pending Maintenance</span>
+          <strong id="reports-pending-maintenance">0</strong>
+          <small>Watch or critical items</small>
+        </div>
+      </div>
+
+      <div class="reports-grid">
+        <article class="report-card report-summary-card">
+          <div class="report-card-header">
+            <div>
+              <span class="section-label">Operational Summary</span>
+              <h3>System Health</h3>
+            </div>
+            <span class="report-badge" id="reports-health-badge">Ready</span>
+          </div>
+
+          <div class="report-metric-list">
+            <div>
+              <span>Total Machines</span>
+              <strong id="reports-total-machines">0</strong>
+            </div>
+            <div>
+              <span>Machines at Risk</span>
+              <strong id="reports-machines-risk">0</strong>
+            </div>
+            <div>
+              <span>Installed Filters</span>
+              <strong id="reports-installed-filters">0</strong>
+            </div>
+            <div>
+              <span>Intelligence Alerts</span>
+              <strong id="reports-alerts-count">0</strong>
+            </div>
+          </div>
+        </article>
+
+        <article class="report-card">
+          <div class="report-card-header">
+            <div>
+              <span class="section-label">Financial Overview</span>
+              <h3>Filter Spend</h3>
+            </div>
+          </div>
+
+          <div class="report-metric-list">
+            <div>
+              <span>Average Filter Cost</span>
+              <strong id="reports-avg-filter-cost">$0.00</strong>
+            </div>
+            <div>
+              <span>Monthly Spend</span>
+              <strong id="reports-monthly-spend">$0.00</strong>
+            </div>
+            <div>
+              <span>Annual Spend</span>
+              <strong id="reports-annual-spend">$0.00</strong>
+            </div>
+          </div>
+        </article>
+
+        <article class="report-card">
+          <div class="report-card-header">
+            <div>
+              <span class="section-label">Inventory Snapshot</span>
+              <h3>Stock Control</h3>
+            </div>
+          </div>
+
+          <div class="report-metric-list">
+            <div>
+              <span>Total Items</span>
+              <strong id="reports-inventory-total">0</strong>
+            </div>
+            <div>
+              <span>Low Stock</span>
+              <strong id="reports-low-stock">0</strong>
+            </div>
+            <div>
+              <span>Reorder Needed</span>
+              <strong id="reports-reorder-needed">0</strong>
+            </div>
+            <div>
+              <span>Inventory Value</span>
+              <strong id="reports-inventory-value">$0.00</strong>
+            </div>
+          </div>
+        </article>
+
+        <article class="report-card report-actions-card">
+          <div class="report-card-header">
+            <div>
+              <span class="section-label">Report Actions</span>
+              <h3>Executive Output</h3>
+            </div>
+          </div>
+
+          <p class="report-description">Generate a quick operational summary from the current system data. PDF export can be added later when the report layout is finalized.</p>
+
+          <div class="report-actions">
+            <button type="button" id="generate-report-summary">Generate Summary</button>
+            <button type="button" class="secondary-btn" id="print-report">Print Report</button>
+          </div>
+        </article>
+      </div>
+
+      <div class="report-output-card" id="report-output-card" style="display:none;">
+        <div class="report-card-header">
+          <div>
+            <span class="section-label">Generated Summary</span>
+            <h3>Current Operational Report</h3>
+          </div>
+        </div>
+        <div id="report-output" class="report-output"></div>
+      </div>
+    </section>
+  </main>
+
+  <div id="alerts-modal" class="modal-overlay" aria-hidden="true">
+    <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="alerts-modal-title">
+      <div class="modal-header">
+        <div>
+          <span class="section-label">Risk Intelligence</span>
+          <h2 id="alerts-modal-title">Intelligence Alerts Report</h2>
+          <p>Review active risks, financial exposure, and recommended actions.</p>
+        </div>
+        <button type="button" id="close-alerts-modal" class="modal-close">×</button>
+      </div>
+
+      <div class="modal-metrics">
+        <div>
+          <span>Active Alerts</span>
+          <strong id="modal-alert-count">0</strong>
+        </div>
+        <div>
+          <span>Critical</span>
+          <strong id="modal-critical-count">0</strong>
+        </div>
+        <div>
+          <span>Warning</span>
+          <strong id="modal-warning-count">0</strong>
+        </div>
+        <div>
+          <span>Risk Exposure</span>
+          <strong id="modal-risk-exposure">$0.00</strong>
+        </div>
+      </div>
+
+      <div id="modal-alerts-list" class="modal-alerts-list">
+        <p class="empty-state">All systems operational.</p>
+      </div>
+
+      <div class="modal-footer">
+        <button type="button" id="archive-all-modal-alerts" class="secondary-btn">Archive All</button>
+        <button type="button" id="close-alerts-modal-footer">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="manual-modal" class="modal-overlay" aria-hidden="true">
+    <div class="modal-card manual-modal-card" role="dialog" aria-modal="true" aria-labelledby="manual-modal-title">
+      <div class="modal-header">
+        <div>
+          <span class="section-label">System Guide</span>
+          <h2 id="manual-modal-title">FiltraCore User Manual</h2>
+          <p>Quick guide for registering machines, inventory, filters, PSI readings, and reading alerts.</p>
+        </div>
+        <button type="button" id="close-manual-modal" class="modal-close">×</button>
+      </div>
+
+      <div class="manual-content">
+        <article class="manual-section">
+          <h3>1. Dashboard</h3>
+          <p>Use the dashboard to review operational status, filter costs, risk exposure, potential savings, and intelligence alerts.</p>
+        </article>
+
+        <article class="manual-section">
+          <h3>2. Machines</h3>
+          <p>Register each machine that uses filters. Add name, type, and location so every filter can be connected to the correct equipment.</p>
+        </article>
+
+        <article class="manual-section">
+          <h3>3. Inventory</h3>
+          <p>Add filter products, stock quantity, unit cost, reorder level, and category. Inventory stock decreases when a filter is assigned.</p>
+        </article>
+
+        <article class="manual-section">
+          <h3>4. Filters</h3>
+          <p>Assign a filter product to a machine. FiltraCore calculates lifecycle status, due date, cost, and PSI condition.</p>
+        </article>
+
+        <article class="manual-section">
+          <h3>5. PSI Monitoring</h3>
+          <p>Enter current PSI when assigning or updating a filter. Healthy PSI is 50–70, warning is 35–49, and critical is 0–34.</p>
+        </article>
+
+        <article class="manual-section">
+          <h3>6. Intelligence Alerts</h3>
+          <p>Open Intelligence Alerts to review active risk, critical warnings, estimated financial exposure, and recommended actions.</p>
+        </article>
+
+        <article class="manual-section">
+          <h3>7. Financial Metrics</h3>
+          <p>Total spend tracks installed filter cost. Risk Exposure estimates operational risk. Potential Savings estimates avoided risk if issues are handled on time.</p>
+        </article>
+      </div>
+
+      <div class="modal-footer">
+        <button type="button" id="close-manual-modal-footer">Close Manual</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>
