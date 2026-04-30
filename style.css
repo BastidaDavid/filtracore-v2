@@ -392,32 +392,122 @@ body {
 }
 
 @media (max-width: 760px) {
-  .smart-setup-shell {
-    right: 16px;
-    left: 16px;
-    bottom: 16px;
+  body {
+    overflow-x: hidden;
   }
 
-  .smart-setup-panel,
+  .app-layout {
+    padding-bottom: calc(170px + env(safe-area-inset-bottom));
+  }
+
+  .smart-setup-shell {
+    right: 12px;
+    left: auto;
+    bottom: calc(86px + env(safe-area-inset-bottom));
+    max-width: calc(100vw - 24px);
+  }
+
+  .smart-setup-panel {
+    width: min(360px, calc(100vw - 24px));
+    max-height: min(52dvh, 430px);
+    padding: 16px;
+    border-radius: 20px;
+  }
+
   .smart-setup-toggle {
-    width: 100%;
+    width: min(252px, calc(100vw - 24px));
+    min-height: 50px;
+    padding: 9px 13px;
   }
 
   .smart-setup-header {
     display: grid;
+    gap: 10px;
+  }
+
+  .smart-setup-header h2 {
+    font-size: 22px;
+  }
+
+  .smart-setup-header p {
+    display: none;
   }
 
   .smart-setup-header-actions {
     justify-content: space-between;
   }
 
+  .smart-setup-count {
+    padding: 7px 10px;
+    font-size: 11px;
+  }
+
+  .smart-setup-close {
+    width: 30px;
+    height: 30px;
+  }
+
+  .smart-progress-track {
+    margin-top: 14px;
+  }
+
+  .smart-setup-list {
+    margin-top: 13px;
+  }
+
   .smart-setup-item {
     grid-template-columns: auto minmax(0, 1fr);
+    padding: 10px;
+    gap: 9px;
+  }
+
+  .smart-check {
+    width: 26px;
+    height: 26px;
+    font-size: 11px;
+  }
+
+  .smart-task-title-row h3 {
+    font-size: 13px;
+  }
+
+  .smart-task-copy p {
+    font-size: 11px;
+    line-height: 1.35;
   }
 
   .smart-task-action {
     grid-column: 1 / -1;
     width: 100%;
+    min-width: 0;
+    padding: 8px 10px;
+  }
+
+  .smart-toggle-meter {
+    width: 78px;
+  }
+
+  .smart-toggle-copy strong {
+    font-size: 14px;
+  }
+}
+
+@media (max-width: 420px) {
+  .smart-setup-shell {
+    right: 10px;
+    bottom: calc(82px + env(safe-area-inset-bottom));
+  }
+
+  .smart-setup-panel {
+    width: calc(100vw - 20px);
+  }
+
+  .smart-setup-toggle {
+    width: 226px;
+  }
+
+  .smart-toggle-meter {
+    width: 58px;
   }
 }
 
@@ -3275,6 +3365,12 @@ button.clickable-kpi small::before,
 
   .maintenance-report-metrics {
     grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 760px) {
+  .app-layout {
+    padding-bottom: calc(170px + env(safe-area-inset-bottom));
   }
 }
 

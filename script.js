@@ -2977,6 +2977,16 @@ if (smartSetupClose) {
   });
 }
 
+document.addEventListener('focusin', (e) => {
+  const isMobileView = window.matchMedia('(max-width: 760px)').matches;
+  const isFormControl = e.target.matches('input, select, textarea');
+  const isInsideSmartSetup = e.target.closest('#smart-setup-shell');
+
+  if (isMobileView && isFormControl && !isInsideSmartSetup && setupState.widgetOpen) {
+    setSmartSetupOpen(false);
+  }
+});
+
 if (toggleAlertsBtn) {
   toggleAlertsBtn.addEventListener('click', () => {
     alertsExpanded = !alertsExpanded;
