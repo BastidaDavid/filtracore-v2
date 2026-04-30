@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>FiltraCore</title>
   <link rel="stylesheet" href="style.css" />
 </head>
@@ -38,6 +39,39 @@
         <button id="add-filter" type="button" class="secondary-btn">Install Filter</button>
       </div>
     </section>
+
+    <div id="smart-setup-shell" class="smart-setup-shell is-open">
+      <div id="smart-setup-panel" class="smart-setup-panel">
+        <div class="smart-setup-header">
+          <div>
+            <span class="section-label">Smart Setup</span>
+            <h2 id="smart-setup-title">Comenzar</h2>
+            <p>Follow the correct operational path to bring FiltraCore online.</p>
+          </div>
+          <div class="smart-setup-header-actions">
+            <div class="smart-setup-count" id="smart-setup-count">0/5 completed</div>
+            <button id="smart-setup-close" class="smart-setup-close" type="button" aria-label="Minimize Smart Setup">−</button>
+          </div>
+        </div>
+
+        <div class="smart-progress-track" aria-hidden="true">
+          <div class="smart-progress-bar" id="smart-progress-bar"></div>
+        </div>
+
+        <div id="smart-setup-list" class="smart-setup-list" aria-labelledby="smart-setup-title"></div>
+      </div>
+
+      <button id="smart-setup-toggle" class="smart-setup-toggle" type="button" aria-expanded="true" aria-controls="smart-setup-panel">
+        <span class="smart-toggle-copy">
+          <strong>Comenzar</strong>
+          <small id="smart-setup-toggle-count">0/5</small>
+        </span>
+
+        <span class="smart-toggle-meter" aria-hidden="true">
+          <span id="smart-setup-toggle-bar"></span>
+        </span>
+      </button>
+    </div>
 
     <section class="kpi-grid">
       <div class="kpi-card">
@@ -156,6 +190,26 @@
         <div class="form-field">
           <label for="machine-location">Location</label>
           <input type="text" id="machine-location" placeholder="Example: Main Bar" required />
+        </div>
+
+        <div class="form-field">
+          <label for="machine-department">Department</label>
+          <input type="text" id="machine-department" placeholder="Example: Beverage Ops" required />
+        </div>
+
+        <div class="form-field">
+          <label for="machine-brand">Brand</label>
+          <input type="text" id="machine-brand" placeholder="Example: Scotsman" required />
+        </div>
+
+        <div class="form-field">
+          <label for="machine-model">Model</label>
+          <input type="text" id="machine-model" placeholder="Example: HID312A" required />
+        </div>
+
+        <div class="form-field">
+          <label for="machine-asset-id">Machine ID</label>
+          <input type="text" id="machine-asset-id" placeholder="Example: ICE-001" required />
         </div>
 
         <button type="submit">Save Machine</button>
@@ -346,6 +400,21 @@
             <div class="form-field">
               <label for="filter-psi">Current PSI</label>
               <input type="number" id="filter-psi" placeholder="Optional baseline PSI" />
+            </div>
+
+            <div class="form-field">
+              <label for="filter-life-months">Lifespan Months</label>
+              <input type="number" id="filter-life-months" min="1" placeholder="Example: 6" required />
+            </div>
+
+            <div class="form-field">
+              <label for="filter-installed-at">Installation Date</label>
+              <input type="date" id="filter-installed-at" required />
+            </div>
+
+            <div class="form-field">
+              <label for="filter-due-date">Replacement Due Date</label>
+              <input type="date" id="filter-due-date" required />
             </div>
 
             <button type="submit">Assign Filter</button>

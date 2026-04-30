@@ -1,10 +1,48 @@
 const links = document.querySelectorAll('.main-nav a');
 const sections = document.querySelectorAll('main section');
 
-const machines = JSON.parse(localStorage.getItem('filtracore_machines')) || [];
-const filters = JSON.parse(localStorage.getItem('filtracore_filters')) || [];
-const inventory = JSON.parse(localStorage.getItem('filtracore_inventory')) || [];
-const maintenanceRecords = JSON.parse(localStorage.getItem('filtracore_maintenance')) || [];
+function loadStoredArray(key) {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(key));
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (error) {
+    console.warn(`FiltraCore ignored invalid localStorage data for ${key}.`, error);
+    return [];
+  }
+}
+
+function loadStoredObject(key, fallback = {}) {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(key));
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : fallback;
+  } catch (error) {
+    console.warn(`FiltraCore ignored invalid localStorage data for ${key}.`, error);
+    return fallback;
+  }
+}
+
+function escapeHTML(value) {
+  return String(value ?? '').replace(/[&<>"']/g, (character) => {
+    const entities = {
+      '&': '&amp;',
+      '<': '&lt;',
+      '>': '&gt;',
+      '"': '&quot;',
+      "'": '&#039;'
+    };
+
+    return entities[character];
+  });
+}
+
+function escapeInlineValue(value) {
+  return escapeHTML(String(value ?? '').replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/\r?\n/g, ' '));
+}
+
+const machines = loadStoredArray('filtracore_machines');
+const filters = loadStoredArray('filtracore_filters');
+const inventory = loadStoredArray('filtracore_inventory');
+const maintenanceRecords = loadStoredArray('filtracore_maintenance');
 
 const machineForm = document.querySelector('#machine-form');
 const machinesList = document.querySelector('#machines-list');
@@ -15,9 +53,21 @@ const dashboardAlertsCount = document.querySelector('#dashboard-alerts-count');
 const dashboardMachinesRiskFilterBtn = document.querySelector('#dashboard-machines-risk-filter');
 const dashboardAlertsFilterBtn = document.querySelector('#dashboard-alerts-filter');
 const machinesRiskFilterBtn = document.querySelector('#machines-risk-filter');
+const smartSetupShell = document.querySelector('#smart-setup-shell');
+const smartSetupPanel = document.querySelector('#smart-setup-panel');
+const smartSetupList = document.querySelector('#smart-setup-list');
+const smartSetupCount = document.querySelector('#smart-setup-count');
+const smartProgressBar = document.querySelector('#smart-progress-bar');
+const smartSetupToggle = document.querySelector('#smart-setup-toggle');
+const smartSetupToggleCount = document.querySelector('#smart-setup-toggle-count');
+const smartSetupToggleBar = document.querySelector('#smart-setup-toggle-bar');
+const smartSetupClose = document.querySelector('#smart-setup-close');
 const totalMachinesKpi = document.querySelectorAll('.kpi-card strong')[0];
 const filterMachineSelect = document.querySelector('#filter-machine');
 const filterProductSelect = document.querySelector('#filter-product');
+const filterLifeMonthsInput = document.querySelector('#filter-life-months');
+const filterInstalledAtInput = document.querySelector('#filter-installed-at');
+const filterDueDateInput = document.querySelector('#filter-due-date');
 const filterForm = document.querySelector('#filter-form');
 const filtersList = document.querySelector('#filters-list');
 const filtersSearchInput = document.querySelector('#filters-search');
@@ -102,7 +152,18 @@ const closeMaintenanceReportBtn = document.querySelector('#close-maintenance-rep
 const maintenanceReportOutputCard = document.querySelector('#maintenance-report-output-card');
 const maintenanceReportOutput = document.querySelector('#maintenance-report-output');
 let alertsExpanded = false;
-let archivedAlerts = JSON.parse(localStorage.getItem('filtracore_archivedAlerts')) || [];
+let archivedAlerts = loadStoredArray('filtracore_archivedAlerts');
+const setupState = loadStoredObject('filtracore_setupState', {
+  dashboardReviewed: false,
+  reportGenerated: false,
+  widgetOpen: true
+});
+
+if (setupState.widgetOpen === undefined) {
+  setupState.widgetOpen = true;
+}
+
+let smartSetupUserInteracted = false;
 
 function showSection(id) {
   sections.forEach(section => {
@@ -120,6 +181,182 @@ function showSection(id) {
     document.querySelector('#' + id).style.display = 'block';
   }
 
+}
+
+function saveSetupState() {
+  localStorage.setItem('filtracore_setupState', JSON.stringify(setupState));
+}
+
+function setSmartSetupOpen(isOpen, manual = false) {
+  if (manual) {
+    smartSetupUserInteracted = true;
+  }
+
+  setupState.widgetOpen = Boolean(isOpen);
+  saveSetupState();
+
+  if (smartSetupShell) {
+    smartSetupShell.classList.toggle('is-open', setupState.widgetOpen);
+  }
+
+  if (smartSetupToggle) {
+    smartSetupToggle.setAttribute('aria-expanded', String(setupState.widgetOpen));
+  }
+}
+
+function hasConfiguredFilterSchedule() {
+  return filters.some(filter => {
+    return Number(filter.lifeMonths) > 0 && Boolean(filter.installedAt) && Boolean(filter.dueDate);
+  });
+}
+
+function getSmartSetupTasks() {
+  const hasMachine = machines.length > 0;
+  const hasFilter = filters.length > 0;
+  const hasSchedule = hasConfiguredFilterSchedule();
+  const dashboardReviewed = hasSchedule && Boolean(setupState.dashboardReviewed);
+  const reportGenerated = dashboardReviewed && Boolean(setupState.reportGenerated);
+
+  return [
+    {
+      key: 'register-machine',
+      title: 'Register Machine',
+      description: 'Add the machine first with location, department, brand, model, and machine ID.',
+      completed: hasMachine,
+      actionLabel: 'Add Machine'
+    },
+    {
+      key: 'add-filter',
+      title: 'Add Filter',
+      description: 'Add a filter and connect it to the registered machine.',
+      completed: hasMachine && hasFilter,
+      actionLabel: 'Install Filter'
+    },
+    {
+      key: 'set-lifespan',
+      title: 'Set Lifespan / Due Date',
+      description: 'Define the filter lifespan, installation date, and replacement due date.',
+      completed: hasMachine && hasFilter && hasSchedule,
+      actionLabel: 'Set Schedule'
+    },
+    {
+      key: 'review-dashboard',
+      title: 'Review Dashboard Status',
+      description: 'Check filter status, upcoming replacements, critical alerts, and machine health.',
+      completed: dashboardReviewed,
+      actionLabel: 'Mark Reviewed'
+    },
+    {
+      key: 'generate-report',
+      title: 'Generate Report',
+      description: 'Create a maintenance report for management, compliance, or operational review.',
+      completed: reportGenerated,
+      actionLabel: 'Generate Report'
+    }
+  ];
+}
+
+function renderSmartSetup() {
+  if (!smartSetupList || !smartSetupCount || !smartProgressBar) return;
+
+  const tasks = getSmartSetupTasks();
+  const completedCount = tasks.filter(task => task.completed).length;
+  const nextTaskIndex = tasks.findIndex(task => !task.completed);
+  const progress = Math.round((completedCount / tasks.length) * 100);
+  const isSetupComplete = completedCount === tasks.length;
+
+  smartSetupCount.textContent = `${completedCount}/${tasks.length} completed`;
+  smartProgressBar.style.width = `${progress}%`;
+
+  if (smartSetupToggleCount) {
+    smartSetupToggleCount.textContent = `${completedCount}/${tasks.length}`;
+  }
+
+  if (smartSetupToggleBar) {
+    smartSetupToggleBar.style.width = `${progress}%`;
+  }
+
+  if (smartSetupShell) {
+    smartSetupShell.classList.toggle('is-complete', isSetupComplete);
+  }
+
+  if (isSetupComplete && setupState.widgetOpen) {
+    setSmartSetupOpen(false);
+  } else if (!isSetupComplete && !smartSetupUserInteracted && !setupState.widgetOpen) {
+    setSmartSetupOpen(true);
+  }
+
+  smartSetupList.innerHTML = tasks.map((task, index) => {
+    const isComplete = task.completed;
+    const isActive = !isComplete && index === nextTaskIndex;
+    const isLocked = !isComplete && nextTaskIndex !== -1 && index > nextTaskIndex;
+    const statusLabel = isComplete ? 'Completed' : isActive ? 'Next step' : 'Locked';
+    const actionLabel = isComplete ? 'View' : task.actionLabel;
+
+    return `
+      <div class="smart-setup-item ${isComplete ? 'is-complete' : ''} ${isActive ? 'is-active' : ''} ${isLocked ? 'is-locked' : ''}">
+        <div class="smart-check" aria-hidden="true">${isComplete ? '✓' : index + 1}</div>
+        <div class="smart-task-copy">
+          <div class="smart-task-title-row">
+            <h3>${escapeHTML(task.title)}</h3>
+            <span>${escapeHTML(statusLabel)}</span>
+          </div>
+          <p>${escapeHTML(task.description)}</p>
+        </div>
+        <button type="button" class="smart-task-action" data-setup-action="${escapeHTML(task.key)}" ${isLocked ? 'disabled' : ''}>
+          ${escapeHTML(actionLabel)}
+        </button>
+      </div>
+    `;
+  }).join('');
+}
+
+function handleSmartSetupAction(action) {
+  if (action === 'register-machine') {
+    openMachinesSection();
+    document.querySelector('#machine-name')?.focus();
+    return;
+  }
+
+  if (action === 'add-filter') {
+    if (machines.length === 0) {
+      openMachinesSection();
+      document.querySelector('#machine-name')?.focus();
+      return;
+    }
+
+    openFiltersSection();
+    filterMachineSelect?.focus();
+    return;
+  }
+
+  if (action === 'set-lifespan') {
+    if (filters.length === 0) {
+      openFiltersSection();
+      filterProductSelect?.focus();
+      return;
+    }
+
+    openFiltersSection();
+    filterLifeMonthsInput?.focus();
+    return;
+  }
+
+  if (action === 'review-dashboard') {
+    showSection('dashboard');
+    setActiveNavById('dashboard');
+    setupState.dashboardReviewed = true;
+    saveSetupState();
+    renderSmartSetup();
+    return;
+  }
+
+  if (action === 'generate-report') {
+    showSection('reports');
+    setActiveNavById('reports');
+    renderReports();
+    generateReportSummary();
+  }
 }
 
 function renderPsiChart(psiHistory) {
@@ -279,6 +516,10 @@ function renderMachines() {
       machine.name,
       machine.type,
       machine.location,
+      machine.department,
+      machine.brand,
+      machine.model,
+      machine.assetId,
       operational.filterName,
       operational.psi,
       operational.status
@@ -309,20 +550,28 @@ function renderMachines() {
 
       ${visibleMachines.map(machine => {
         const operational = getMachineOperationalStatus(machine);
+        const machineDetails = [
+          machine.assetId ? `ID: ${machine.assetId}` : '',
+          machine.department ? `Dept: ${machine.department}` : '',
+          machine.brand ? `${machine.brand}${machine.model ? ' / ' + machine.model : ''}` : machine.model || ''
+        ].filter(Boolean).join(' • ');
 
         return `
           <div class="fleet-row">
             <span 
               class="fleet-machine-name clickable-machine-name" 
-              onclick="startMaintenanceFromMachine(${machine.id})"
+              onclick="startMaintenanceFromMachine(${Number(machine.id)})"
               title="Click to start maintenance"
-            >${machine.name}</span>
-            <span>${machine.type}</span>
-            <span>${machine.location}</span>
-            <span>${operational.filterName}</span>
-            <span>${operational.psi}</span>
+            >
+              ${escapeHTML(machine.name)}
+              ${machineDetails ? `<small>${escapeHTML(machineDetails)}</small>` : ''}
+            </span>
+            <span>${escapeHTML(machine.type)}</span>
+            <span>${escapeHTML(machine.location)}</span>
+            <span>${escapeHTML(operational.filterName)}</span>
+            <span>${escapeHTML(operational.psi)}</span>
             <span>
-              <span class="status-pill status-${operational.type}">${operational.status}</span>
+              <span class="status-pill status-${escapeHTML(operational.type)}">${escapeHTML(operational.status)}</span>
             </span>
           </div>
         `;
@@ -372,8 +621,8 @@ function updateMachineOptions() {
 
   machines.forEach(machine => {
     filterMachineSelect.innerHTML += `
-      <option value="${machine.id}">
-        ${machine.name} - ${machine.type}
+      <option value="${escapeHTML(machine.id)}">
+        ${escapeHTML(machine.name)} - ${escapeHTML(machine.type)}
       </option>
     `;
   });
@@ -387,8 +636,8 @@ function updateInventoryOptions() {
   inventory.forEach(item => {
     const stock = Number(item.stock) || 0;
     filterProductSelect.innerHTML += `
-      <option value="${item.id}">
-        ${item.name} (Stock: ${stock})
+      <option value="${escapeHTML(item.id)}">
+        ${escapeHTML(item.name)} (Stock: ${stock})
       </option>
     `;
   });
@@ -400,8 +649,8 @@ function updateMaintenanceOptions() {
 
     machines.forEach(machine => {
       maintenanceMachineSelect.innerHTML += `
-        <option value="${machine.id}">
-          ${machine.name} - ${machine.type}
+        <option value="${escapeHTML(machine.id)}">
+          ${escapeHTML(machine.name)} - ${escapeHTML(machine.type)}
         </option>
       `;
     });
@@ -413,8 +662,8 @@ function updateMaintenanceOptions() {
     filters.forEach(filter => {
       const machine = machines.find(machine => machine.id === filter.machineId);
       maintenanceFilterSelect.innerHTML += `
-        <option value="${filter.id}">
-          ${filter.productName || 'Filter'} ${machine ? '- ' + machine.name : ''}
+        <option value="${escapeHTML(filter.id)}">
+          ${escapeHTML(filter.productName || 'Filter')} ${machine ? '- ' + escapeHTML(machine.name) : ''}
         </option>
       `;
     });
@@ -426,8 +675,8 @@ function updateMaintenanceOptions() {
     inventory.forEach(item => {
       const stock = Number(item.stock) || 0;
       maintenanceReplacementProductSelect.innerHTML += `
-        <option value="${item.id}" ${stock <= 0 ? 'disabled' : ''}>
-          ${item.name} (Stock: ${stock})
+        <option value="${escapeHTML(item.id)}" ${stock <= 0 ? 'disabled' : ''}>
+          ${escapeHTML(item.name)} (Stock: ${stock})
         </option>
       `;
     });
@@ -506,6 +755,70 @@ function getDaysBetween(startDate, endDate) {
   const start = new Date(startDate);
   const end = new Date(endDate);
   return Math.ceil((end - start) / (1000 * 60 * 60 * 24));
+}
+
+function parseDateInput(value) {
+  if (!value) return new Date();
+
+  const [year, month, day] = value.split('-').map(Number);
+  return new Date(year, month - 1, day);
+}
+
+function formatDateInput(date) {
+  const parsedDate = new Date(date);
+
+  if (Number.isNaN(parsedDate.getTime())) {
+    return '';
+  }
+
+  const localDate = new Date(parsedDate.getTime() - parsedDate.getTimezoneOffset() * 60000);
+  return localDate.toISOString().split('T')[0];
+}
+
+function getSelectedFilterProduct() {
+  const productId = Number(filterProductSelect?.value);
+  return inventory.find(item => item.id === productId);
+}
+
+function syncFilterScheduleFields(forceDueDate = false) {
+  if (!filterLifeMonthsInput || !filterInstalledAtInput || !filterDueDateInput) return;
+
+  const product = getSelectedFilterProduct();
+  const defaultLifeMonths = product ? getDefaultLifeMonths(product.category) : 6;
+
+  if (!filterLifeMonthsInput.value) {
+    filterLifeMonthsInput.value = product?.lifeMonths || defaultLifeMonths;
+  }
+
+  if (!filterInstalledAtInput.value) {
+    filterInstalledAtInput.value = formatDateInput(new Date());
+  }
+
+  const installedAt = parseDateInput(filterInstalledAtInput.value);
+  const lifeMonths = Number(filterLifeMonthsInput.value || product?.lifeMonths || defaultLifeMonths);
+
+  if (forceDueDate || !filterDueDateInput.value) {
+    filterDueDateInput.value = formatDateInput(addMonths(installedAt, lifeMonths));
+  }
+}
+
+if (filterProductSelect) {
+  filterProductSelect.addEventListener('change', () => {
+    if (filterLifeMonthsInput) filterLifeMonthsInput.value = '';
+    syncFilterScheduleFields(true);
+  });
+}
+
+if (filterLifeMonthsInput) {
+  filterLifeMonthsInput.addEventListener('input', () => {
+    syncFilterScheduleFields(true);
+  });
+}
+
+if (filterInstalledAtInput) {
+  filterInstalledAtInput.addEventListener('change', () => {
+    syncFilterScheduleFields(true);
+  });
 }
 
 function getFilterStatus(filter) {
@@ -729,6 +1042,7 @@ function updateFilterPsi(filterId) {
   renderRiskScore();
   renderFinancialMetrics();
   renderReports();
+  renderSmartSetup();
 }
 
 function renderFilters() {
@@ -810,18 +1124,18 @@ function renderFilters() {
 
         return `
           <div class="filters-row">
-            <span class="filters-machine-name">${machine ? machine.name : 'Unknown Machine'}</span>
-            <span class="filters-product-name">${filter.productName || 'N/A'}</span>
-            <span>${dueDate.toLocaleDateString()}</span>
-            <span>${daysRemaining <= 0 ? 'Expired' : `${daysRemaining} days`}</span>
-            <span>${psiText}</span>
+            <span class="filters-machine-name">${escapeHTML(machine ? machine.name : 'Unknown Machine')}</span>
+            <span class="filters-product-name">${escapeHTML(filter.productName || 'N/A')}</span>
+            <span>${escapeHTML(dueDate.toLocaleDateString())}</span>
+            <span>${escapeHTML(daysRemaining <= 0 ? 'Expired' : `${daysRemaining} days`)}</span>
+            <span>${escapeHTML(psiText)}</span>
             <span>
-              <span class="status-pill status-${operational.type}">${operational.status}</span>
+              <span class="status-pill status-${escapeHTML(operational.type)}">${escapeHTML(operational.status)}</span>
             </span>
             <span class="filter-actions">
-              <input type="number" id="psi-update-${filter.id}" class="filter-psi-input" placeholder="PSI" />
-              <button type="button" class="filter-action-btn filter-update-btn" onclick="updateFilterPsi(${filter.id})">Update PSI</button>
-              <button type="button" class="filter-action-btn filter-maintenance-btn" onclick="startMaintenanceFromFilter(${filter.id})">Maintenance</button>
+              <input type="number" id="psi-update-${Number(filter.id)}" class="filter-psi-input" placeholder="PSI" />
+              <button type="button" class="filter-action-btn filter-update-btn" onclick="updateFilterPsi(${Number(filter.id)})">Update PSI</button>
+              <button type="button" class="filter-action-btn filter-maintenance-btn" onclick="startMaintenanceFromFilter(${Number(filter.id)})">Maintenance</button>
             </span>
           </div>
         `;
@@ -1192,6 +1506,9 @@ function generateReportSummary() {
     </ul>
   `;
 
+  setupState.reportGenerated = true;
+  saveSetupState();
+  renderSmartSetup();
   reportOutputCard.style.display = 'block';
   reportOutputCard.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
@@ -1310,13 +1627,13 @@ function renderInventory() {
 
         return `
           <div class="inventory-row">
-            <span class="inventory-item-name">${item.name}</span>
-            <span>${item.category || 'Uncategorized'}</span>
+            <span class="inventory-item-name">${escapeHTML(item.name)}</span>
+            <span>${escapeHTML(item.category || 'Uncategorized')}</span>
             <span>${stock}</span>
             <span>$${unitCost.toFixed(2)}</span>
             <span>${reorderLevel}</span>
             <span>
-              <span class="stock-pill stock-${stockStatus.type}">${stockStatus.status}</span>
+              <span class="stock-pill stock-${escapeHTML(stockStatus.type)}">${escapeHTML(stockStatus.status)}</span>
             </span>
           </div>
         `;
@@ -1483,14 +1800,14 @@ function renderMaintenance() {
         return `
           <div class="maintenance-row">
             <span>
-              <span class="maintenance-pill maintenance-${statusClass}">${item.operational.status}</span>
+              <span class="maintenance-pill maintenance-${escapeHTML(statusClass)}">${escapeHTML(item.operational.status)}</span>
             </span>
-            <span class="maintenance-machine-name">${item.machine ? item.machine.name : 'Unknown Machine'}</span>
-            <span class="maintenance-filter-name">${item.filter.productName || 'N/A'}</span>
-            <span>${actionLabel}</span>
-            <span class="maintenance-notes-cell">${item.operational.reason}</span>
+            <span class="maintenance-machine-name">${escapeHTML(item.machine ? item.machine.name : 'Unknown Machine')}</span>
+            <span class="maintenance-filter-name">${escapeHTML(item.filter.productName || 'N/A')}</span>
+            <span>${escapeHTML(actionLabel)}</span>
+            <span class="maintenance-notes-cell">${escapeHTML(item.operational.reason)}</span>
             <span>
-              <button type="button" class="filter-action-btn filter-maintenance-btn" onclick="startMaintenanceFromFilter(${item.filter.id})">
+              <button type="button" class="filter-action-btn filter-maintenance-btn" onclick="startMaintenanceFromFilter(${Number(item.filter.id)})">
                 Log Maintenance
               </button>
             </span>
@@ -1521,13 +1838,13 @@ function renderMaintenance() {
 
         return `
           <div class="maintenance-row">
-            <span>${dateText}</span>
-            <span class="maintenance-machine-name">${machine ? machine.name : 'Unknown Machine'}</span>
-            <span class="maintenance-filter-name">${filter ? filter.productName : 'Not assigned'}</span>
-            <span>${record.type || 'General'}</span>
-            <span class="maintenance-notes-cell">${record.notes || 'No notes'}</span>
+            <span>${escapeHTML(dateText)}</span>
+            <span class="maintenance-machine-name">${escapeHTML(machine ? machine.name : 'Unknown Machine')}</span>
+            <span class="maintenance-filter-name">${escapeHTML(filter ? filter.productName : 'Not assigned')}</span>
+            <span>${escapeHTML(record.type || 'General')}</span>
+            <span class="maintenance-notes-cell">${escapeHTML(record.notes || 'No notes')}</span>
             <span>
-              <span class="maintenance-pill maintenance-${typeStatus.type}">${typeStatus.label}</span>
+              <span class="maintenance-pill maintenance-${escapeHTML(typeStatus.type)}">${escapeHTML(typeStatus.label)}</span>
             </span>
           </div>
         `;
@@ -1589,12 +1906,12 @@ function generateMaintenanceReport() {
 
     return `
       <tr>
-        <td>${item.operational.status}</td>
-        <td>${item.machine ? item.machine.name : 'Unknown Machine'}</td>
-        <td>${item.filter.productName || 'N/A'}</td>
-        <td>${currentPsi}</td>
-        <td>${item.operational.reason}</td>
-        <td>${action}</td>
+        <td>${escapeHTML(item.operational.status)}</td>
+        <td>${escapeHTML(item.machine ? item.machine.name : 'Unknown Machine')}</td>
+        <td>${escapeHTML(item.filter.productName || 'N/A')}</td>
+        <td>${escapeHTML(currentPsi)}</td>
+        <td>${escapeHTML(item.operational.reason)}</td>
+        <td>${escapeHTML(action)}</td>
       </tr>
     `;
   }).join('');
@@ -1616,14 +1933,14 @@ function generateMaintenanceReport() {
 
     return `
       <tr>
-        <td>${dateText}</td>
-        <td>${machine ? machine.name : 'Unknown Machine'}</td>
-        <td>${filter ? filter.productName : 'Not assigned'}</td>
-        <td>${record.type || 'General'}</td>
-        <td>${psiText}</td>
-        <td>${replacementText}</td>
-        <td>${record.notes || 'No notes'}</td>
-        <td>${getMaintenanceTypeStatus(record.type).label}</td>
+        <td>${escapeHTML(dateText)}</td>
+        <td>${escapeHTML(machine ? machine.name : 'Unknown Machine')}</td>
+        <td>${escapeHTML(filter ? filter.productName : 'Not assigned')}</td>
+        <td>${escapeHTML(record.type || 'General')}</td>
+        <td>${escapeHTML(psiText)}</td>
+        <td>${escapeHTML(replacementText)}</td>
+        <td>${escapeHTML(record.notes || 'No notes')}</td>
+        <td>${escapeHTML(getMaintenanceTypeStatus(record.type).label)}</td>
       </tr>
     `;
   }).join('');
@@ -1679,6 +1996,9 @@ function generateMaintenanceReport() {
     </div>
   `;
 
+  setupState.reportGenerated = true;
+  saveSetupState();
+  renderSmartSetup();
   maintenanceReportOutputCard.style.display = 'block';
   if (closeMaintenanceReportBtn) {
     closeMaintenanceReportBtn.style.display = 'inline-block';
@@ -1925,9 +2245,7 @@ function getMachineRiskModel(machineName) {
   return models.default;
 }
 
-function getFinancialRisk() {
-  const alerts = getSystemAlerts();
-
+function getFinancialRisk(alerts = getVisibleAlerts()) {
   let total = 0;
   const reasons = [];
 
@@ -1991,6 +2309,8 @@ function archiveAlert(alertKey) {
   localStorage.setItem('filtracore_archivedAlerts', JSON.stringify(archivedAlerts));
   renderRiskScore();
   renderFinancialMetrics();
+  renderReports();
+  renderSmartSetup();
   renderAlertsModal();
 }
 
@@ -2006,6 +2326,8 @@ function archiveAllVisibleAlerts() {
   localStorage.setItem('filtracore_archivedAlerts', JSON.stringify(archivedAlerts));
   renderRiskScore();
   renderFinancialMetrics();
+  renderReports();
+  renderSmartSetup();
   renderAlertsModal();
 }
 
@@ -2015,7 +2337,7 @@ function renderAlertsModal() {
   const alerts = getVisibleAlerts();
   const criticalCount = alerts.filter(alert => alert.type === 'critical').length;
   const warningCount = alerts.filter(alert => alert.type === 'warning').length;
-  const riskData = getFinancialRisk();
+  const riskData = getFinancialRisk(alerts);
   const risk = riskData.total;
 
   if (modalAlertCount) modalAlertCount.textContent = alerts.length;
@@ -2039,22 +2361,25 @@ function renderAlertsModal() {
 
     modalAlertsList.innerHTML = alerts.map(alert => {
       const alertKey = getAlertKey(alert);
-      const safeAlertKey = alertKey.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+      const safeAlertKey = escapeInlineValue(alertKey);
+      const safeMachine = escapeInlineValue(alert.machine);
+      const safeType = escapeInlineValue(alert.type);
+      const safeMessage = escapeInlineValue(alert.message);
       const riskReason = riskData.reasons.find(reason => getAlertKey(reason) === alertKey);
 
       return `
-        <div class="modal-alert-card alert-${alert.type}">
+        <div class="modal-alert-card alert-${escapeHTML(alert.type)}">
           <div class="alert-card-header">
             <div>
-              <h3>${alert.machine}</h3>
-              <p><strong>${alert.type.toUpperCase()}</strong></p>
+              <h3>${escapeHTML(alert.machine)}</h3>
+              <p><strong>${escapeHTML(alert.type.toUpperCase())}</strong></p>
             </div>
 
             <div class="alert-actions">
-              <button type="button" class="view-machine-btn" onclick="goToMachine('${String(alert.machine).replace(/\\/g, '\\\\').replace(/'/g, "\\'")}')">
+              <button type="button" class="view-machine-btn" onclick="goToMachine('${safeMachine}')">
                 View Machine
               </button>
-              <button type="button" class="start-maintenance-btn" onclick="startMaintenanceFromAlert('${String(alert.machine).replace(/\\/g, '\\\\').replace(/'/g, "\\'")}', '${String(alert.type).replace(/\\/g, '\\\\').replace(/'/g, "\\'")}', '${String(alert.message).replace(/\\/g, '\\\\').replace(/'/g, "\\'")}')">
+              <button type="button" class="start-maintenance-btn" onclick="startMaintenanceFromAlert('${safeMachine}', '${safeType}', '${safeMessage}')">
                 Start Maintenance
               </button>
               <button type="button" class="archive-alert-btn" onclick="archiveAlert('${safeAlertKey}')">
@@ -2062,11 +2387,11 @@ function renderAlertsModal() {
               </button>
             </div>
           </div>
-          <p>${alert.message}</p>
+          <p>${escapeHTML(alert.message)}</p>
           ${riskReason ? `
             <div class="risk-breakdown">
               <p><strong>Risk Exposure:</strong> $${riskReason.cost.toFixed(2)}</p>
-              <p><strong>Why this amount?</strong> ${riskReason.costReason}</p>
+              <p><strong>Why this amount?</strong> ${escapeHTML(riskReason.costReason)}</p>
             </div>
           ` : ''}
         </div>
@@ -2249,18 +2574,18 @@ function renderRiskScore() {
 
   riskList.innerHTML = alerts.map(alert => {
     const alertKey = getAlertKey(alert);
-    const safeAlertKey = alertKey.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+    const safeAlertKey = escapeInlineValue(alertKey);
 
     return `
-      <div class="machine-card alert-${alert.type}">
+      <div class="machine-card alert-${escapeHTML(alert.type)}">
         <div class="alert-card-header">
           <div>
-            <h3>${alert.machine}</h3>
-            <p><strong>${alert.type.toUpperCase()}</strong></p>
+            <h3>${escapeHTML(alert.machine)}</h3>
+            <p><strong>${escapeHTML(alert.type.toUpperCase())}</strong></p>
           </div>
           <button type="button" class="archive-alert-btn" onclick="archiveAlert('${safeAlertKey}')">Archive</button>
         </div>
-        <p>${alert.message}</p>
+        <p>${escapeHTML(alert.message)}</p>
       </div>
     `;
   }).join('');
@@ -2287,9 +2612,13 @@ if (machineForm) {
 
     const machine = {
       id: Date.now(),
-      name: document.querySelector('#machine-name').value,
-      type: document.querySelector('#machine-type').value,
-      location: document.querySelector('#machine-location').value
+      name: document.querySelector('#machine-name').value.trim(),
+      type: document.querySelector('#machine-type').value.trim(),
+      location: document.querySelector('#machine-location').value.trim(),
+      department: document.querySelector('#machine-department').value.trim(),
+      brand: document.querySelector('#machine-brand').value.trim(),
+      model: document.querySelector('#machine-model').value.trim(),
+      assetId: document.querySelector('#machine-asset-id').value.trim()
     };
 
     machines.push(machine);
@@ -2302,18 +2631,25 @@ if (machineForm) {
     renderRiskScore();
     renderFinancialMetrics();
     renderReports();
+    renderSmartSetup();
   });
 }
 
 if (filterForm) {
   filterForm.addEventListener('submit', (e) => {
     e.preventDefault();
+    syncFilterScheduleFields(false);
 
     const machineId = Number(document.querySelector('#filter-machine').value);
     const productId = Number(document.querySelector('#filter-product').value);
     const product = inventory.find(item => item.id === productId);
     const psiInput = document.querySelector('#filter-psi');
     const psi = psiInput && psiInput.value !== '' ? Number(psiInput.value) : null;
+    const lifeMonths = Number(filterLifeMonthsInput?.value || product?.lifeMonths || getDefaultLifeMonths(product?.category));
+    const installedAt = parseDateInput(filterInstalledAtInput?.value);
+    const dueDate = filterDueDateInput?.value
+      ? parseDateInput(filterDueDateInput.value)
+      : addMonths(installedAt, lifeMonths);
 
     if (!machineId) {
       alert('Select a valid machine');
@@ -2330,11 +2666,12 @@ if (filterForm) {
       return;
     }
 
-    product.stock = Number(product.stock) - 1;
+    if (!lifeMonths || lifeMonths < 1 || Number.isNaN(installedAt.getTime()) || Number.isNaN(dueDate.getTime())) {
+      alert('Complete lifespan, installation date, and replacement due date');
+      return;
+    }
 
-    const installedAt = new Date();
-    const lifeMonths = Number(product.lifeMonths || getDefaultLifeMonths(product.category));
-    const dueDate = addMonths(installedAt, lifeMonths);
+    product.stock = Number(product.stock) - 1;
 
     const filter = {
       id: Date.now(),
@@ -2358,6 +2695,7 @@ if (filterForm) {
     localStorage.setItem('filtracore_filters', JSON.stringify(filters));
     localStorage.setItem('filtracore_inventory', JSON.stringify(inventory));
     filterForm.reset();
+    syncFilterScheduleFields(true);
     renderMachines();
     renderFilters();
     renderInventory();
@@ -2369,6 +2707,7 @@ if (filterForm) {
     renderRiskScore();
     renderFinancialMetrics();
     renderReports();
+    renderSmartSetup();
   });
 }
 
@@ -2380,8 +2719,8 @@ if (inventoryForm) {
 
     const item = {
       id: Date.now(),
-      name: document.querySelector('#inventory-name').value,
-      category,
+      name: document.querySelector('#inventory-name').value.trim(),
+      category: category.trim(),
       stock: Number(document.querySelector('#inventory-stock').value),
       unitCost: Number(document.querySelector('#inventory-cost').value),
       reorderLevel: Number(document.querySelector('#inventory-reorder').value),
@@ -2393,10 +2732,12 @@ if (inventoryForm) {
     inventoryForm.reset();
     renderInventory();
     updateInventoryOptions();
+    syncFilterScheduleFields(true);
     renderCostPerMachine();
     renderRiskScore();
     renderFinancialMetrics();
     renderReports();
+    renderSmartSetup();
     console.log('Inventory item saved:', item);
   });
 }
@@ -2570,6 +2911,7 @@ function openFiltersSection() {
   updateMachineOptions();
   updateInventoryOptions();
   updateMaintenanceOptions();
+  syncFilterScheduleFields(true);
 
   showSection('filters');
   setActiveNavById('filters');
@@ -2612,6 +2954,28 @@ document.addEventListener('click', (e) => {
     openFiltersSection();
   }
 }, true);
+
+if (smartSetupList) {
+  smartSetupList.addEventListener('click', (e) => {
+    const actionButton = e.target.closest('[data-setup-action]');
+
+    if (!actionButton || actionButton.disabled) return;
+
+    handleSmartSetupAction(actionButton.dataset.setupAction);
+  });
+}
+
+if (smartSetupToggle) {
+  smartSetupToggle.addEventListener('click', () => {
+    setSmartSetupOpen(!setupState.widgetOpen, true);
+  });
+}
+
+if (smartSetupClose) {
+  smartSetupClose.addEventListener('click', () => {
+    setSmartSetupOpen(false, true);
+  });
+}
 
 if (toggleAlertsBtn) {
   toggleAlertsBtn.addEventListener('click', () => {
@@ -2687,10 +3051,12 @@ if (manualModal) {
 
 // default view
 showSection('dashboard');
+setSmartSetupOpen(setupState.widgetOpen);
 renderMachines();
 updateMachineOptions();
 updateInventoryOptions();
 updateMaintenanceOptions();
+syncFilterScheduleFields(true);
 renderFilters();
 renderInventory();
 renderMaintenance();
@@ -2699,3 +3065,4 @@ renderCostPerMachine();
 renderRiskScore();
 renderFinancialMetrics();
 renderReports();
+renderSmartSetup();

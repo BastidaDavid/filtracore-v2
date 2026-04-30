@@ -112,6 +112,315 @@ body {
   align-items: center;
 }
 
+/* SMART SETUP FLOATING WIDGET */
+.smart-setup-shell {
+  position: fixed;
+  right: 28px;
+  bottom: 24px;
+  z-index: 950;
+  display: grid;
+  justify-items: end;
+  gap: 12px;
+  pointer-events: none;
+}
+
+.smart-setup-panel {
+  width: min(430px, calc(100vw - 32px));
+  max-height: min(68vh, 640px);
+  overflow-y: auto;
+  padding: 20px;
+  border: 1px solid rgba(226, 232, 240, 0.95);
+  border-radius: 22px;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 26px 70px rgba(15, 23, 42, 0.2);
+  backdrop-filter: blur(18px);
+  pointer-events: auto;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(14px) scale(0.96);
+  transform-origin: bottom right;
+  transition: opacity 0.22s ease, transform 0.22s ease, visibility 0.22s ease;
+}
+
+.smart-setup-shell.is-open .smart-setup-panel {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0) scale(1);
+}
+
+.smart-setup-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 18px;
+  align-items: flex-start;
+}
+
+.smart-setup-header h2 {
+  margin-top: 5px;
+  font-size: 24px;
+  letter-spacing: 0;
+}
+
+.smart-setup-header p {
+  margin-top: 5px;
+  color: #64748b;
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.smart-setup-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.smart-setup-count {
+  min-width: max-content;
+  padding: 8px 11px;
+  border-radius: 999px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  color: #334155;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.smart-setup-close {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 1px solid #e2e8f0;
+  border-radius: 999px;
+  background: #ffffff;
+  color: #475569;
+  box-shadow: none;
+  font-size: 18px;
+  line-height: 1;
+}
+
+.smart-progress-track {
+  margin-top: 18px;
+  height: 9px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #edf2f7;
+}
+
+.smart-progress-bar {
+  width: 0;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #22c55e, #0ea5e9);
+  transition: width 0.45s ease;
+}
+
+.smart-setup-list {
+  margin-top: 16px;
+  display: grid;
+  gap: 8px;
+}
+
+.smart-setup-item {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  padding: 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  background: #ffffff;
+  transition: transform 0.22s ease, border-color 0.22s ease, background 0.22s ease, box-shadow 0.22s ease;
+}
+
+.smart-setup-item.is-active {
+  border-color: #86efac;
+  background: linear-gradient(180deg, #ffffff, #f0fdf4);
+  box-shadow: 0 12px 28px rgba(34, 197, 94, 0.09);
+}
+
+.smart-setup-item.is-complete {
+  background: #f8fafc;
+}
+
+.smart-setup-item.is-complete .smart-task-copy h3 {
+  color: #64748b;
+  text-decoration: line-through;
+  text-decoration-thickness: 2px;
+  text-decoration-color: #94a3b8;
+}
+
+.smart-setup-item.is-locked {
+  opacity: 0.62;
+}
+
+.smart-setup-item:hover {
+  transform: translateY(-1px);
+}
+
+.smart-check {
+  width: 30px;
+  height: 30px;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  background: #f8fafc;
+  border: 1px solid #cbd5e1;
+  color: #475569;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.smart-setup-item.is-complete .smart-check {
+  background: #dcfce7;
+  border-color: #86efac;
+  color: #166534;
+}
+
+.smart-task-copy {
+  min-width: 0;
+}
+
+.smart-task-title-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.smart-task-title-row h3 {
+  color: #0f172a;
+  font-size: 14px;
+  letter-spacing: 0;
+}
+
+.smart-task-title-row span {
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: #f1f5f9;
+  color: #64748b;
+  font-size: 10px;
+  font-weight: 900;
+}
+
+.smart-setup-item.is-active .smart-task-title-row span {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.smart-task-copy p {
+  margin-top: 4px;
+  color: #64748b;
+  font-size: 12px;
+  line-height: 1.42;
+}
+
+.smart-task-action {
+  min-width: 112px;
+  padding: 8px 12px;
+  border-radius: 999px;
+  box-shadow: none;
+  background: #0f172a;
+  font-size: 12px;
+}
+
+.smart-task-action:disabled {
+  cursor: not-allowed;
+  background: #e2e8f0;
+  color: #94a3b8;
+}
+
+.smart-task-action:disabled:hover {
+  transform: none;
+  opacity: 1;
+}
+
+.smart-setup-toggle {
+  width: 300px;
+  max-width: calc(100vw - 32px);
+  min-height: 58px;
+  padding: 11px 16px;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 12px;
+  align-items: center;
+  border: 1px solid rgba(226, 232, 240, 0.95);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.96);
+  color: #0f172a;
+  box-shadow: 0 18px 42px rgba(15, 23, 42, 0.18);
+  backdrop-filter: blur(18px);
+  pointer-events: auto;
+}
+
+.smart-toggle-copy {
+  display: grid;
+  gap: 2px;
+  text-align: left;
+}
+
+.smart-toggle-copy strong {
+  font-size: 15px;
+  line-height: 1.1;
+}
+
+.smart-toggle-copy small {
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.smart-toggle-meter {
+  width: 110px;
+  height: 7px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #edf2f7;
+}
+
+.smart-toggle-meter span {
+  display: block;
+  width: 0;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #22c55e, #0ea5e9);
+  transition: width 0.45s ease;
+}
+
+.smart-setup-shell.is-complete .smart-setup-toggle {
+  border-color: #bbf7d0;
+}
+
+@media (max-width: 760px) {
+  .smart-setup-shell {
+    right: 16px;
+    left: 16px;
+    bottom: 16px;
+  }
+
+  .smart-setup-panel,
+  .smart-setup-toggle {
+    width: 100%;
+  }
+
+  .smart-setup-header {
+    display: grid;
+  }
+
+  .smart-setup-header-actions {
+    justify-content: space-between;
+  }
+
+  .smart-setup-item {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .smart-task-action {
+    grid-column: 1 / -1;
+    width: 100%;
+  }
+}
+
 /* BUTTONS */
 button {
   padding: 10px 16px;
@@ -1487,6 +1796,15 @@ button {
 .fleet-machine-name {
   color: #0f172a;
   font-weight: 800;
+}
+
+.fleet-machine-name small {
+  display: block;
+  margin-top: 3px;
+  color: #94a3b8;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.35;
 }
 
 .status-pill {
@@ -2975,6 +3293,7 @@ button.clickable-kpi small::before,
   .maintenance-report-actions,
   .maintenance-list-clean,
   .quick-actions,
+  .smart-setup-shell,
   button {
     display: none !important;
   }
