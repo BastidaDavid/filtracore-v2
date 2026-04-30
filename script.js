@@ -312,6 +312,10 @@ function renderSmartSetup() {
 }
 
 function handleSmartSetupAction(action) {
+  if (window.matchMedia('(max-width: 760px)').matches) {
+    setSmartSetupOpen(false, true);
+  }
+
   if (action === 'register-machine') {
     openMachinesSection();
     document.querySelector('#machine-name')?.focus();
@@ -2960,6 +2964,10 @@ if (smartSetupList) {
     const actionButton = e.target.closest('[data-setup-action]');
 
     if (!actionButton || actionButton.disabled) return;
+
+    if (window.matchMedia('(max-width: 760px)').matches) {
+      setSmartSetupOpen(false, true);
+    }
 
     handleSmartSetupAction(actionButton.dataset.setupAction);
   });
