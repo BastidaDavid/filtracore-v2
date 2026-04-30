@@ -415,9 +415,13 @@ body {
   }
 
   .smart-setup-toggle {
-    width: min(252px, calc(100vw - 24px));
-    min-height: 50px;
-    padding: 9px 13px;
+    width: 58px;
+    height: 58px;
+    min-height: 58px;
+    padding: 0;
+    display: grid;
+    place-items: center;
+    grid-template-columns: 1fr;
   }
 
   .smart-setup-header {
@@ -483,12 +487,22 @@ body {
     padding: 8px 10px;
   }
 
-  .smart-toggle-meter {
-    width: 78px;
+  .smart-setup-toggle::before {
+    content: "✓";
+    width: 26px;
+    height: 26px;
+    display: grid;
+    place-items: center;
+    border-radius: 999px;
+    background: #dcfce7;
+    color: #166534;
+    font-size: 17px;
+    font-weight: 900;
   }
 
-  .smart-toggle-copy strong {
-    font-size: 14px;
+  .smart-toggle-copy,
+  .smart-toggle-meter {
+    display: none;
   }
 }
 
@@ -503,11 +517,9 @@ body {
   }
 
   .smart-setup-toggle {
-    width: 226px;
-  }
-
-  .smart-toggle-meter {
-    width: 58px;
+    width: 56px;
+    height: 56px;
+    min-height: 56px;
   }
 }
 
