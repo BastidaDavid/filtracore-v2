@@ -2039,7 +2039,7 @@ function renderMaintenance() {
     <div class="maintenance-stack">
       <div class="maintenance-block">
         <div class="panel-heading panel-heading-clean">
-          <h3>⚠️ Pending Maintenance</h3>
+          <h3>Pending Maintenance</h3>
           <p>Filters currently in Watch or Critical status that need attention.</p>
         </div>
         ${pendingSection}
@@ -2047,7 +2047,7 @@ function renderMaintenance() {
 
       <div class="maintenance-block">
         <div class="panel-heading panel-heading-clean">
-          <h3>📋 Maintenance History</h3>
+          <h3>Maintenance History</h3>
           <p>Actions already logged in the system.</p>
         </div>
         ${historySection}
