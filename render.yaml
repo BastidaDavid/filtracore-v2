@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: filtracore-v2
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: NODE_VERSION
+        value: 20
+      - key: DATABASE_URL
+        sync: false

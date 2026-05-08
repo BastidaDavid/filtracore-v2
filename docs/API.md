@@ -189,13 +189,26 @@ Returns: full app state.
 ## Deployment Checklist
 
 1. Commit and push `server.js`, `package.json`, `package-lock.json`, `schema.sql`, `script.js`, `.gitignore`, and this `docs/API.md`.
-2. In Render, set the service start command to `npm start`.
-3. In Render, set `DATABASE_URL` on the web service environment.
-4. Deploy.
-5. Confirm:
+2. In Render, deploy this repository as a **Web Service**, not a Static Site.
+3. Set the service start command to `npm start`.
+4. Set `DATABASE_URL` on the web service environment.
+5. Deploy.
+6. Confirm:
+
+If `https://filtracore-v2.onrender.com/server.js` downloads or displays code, the Render service is still configured as a Static Site. A Static Site cannot run Express API routes.
+
+The API is correctly deployed only when these work:
 
 ```bash
 curl https://filtracore-v2.onrender.com/api/health
 curl https://filtracore-v2.onrender.com/api/version
 curl https://filtracore-v2.onrender.com/api/state
 ```
+
+Expected health response:
+
+```json
+{"ok":true}
+```
+
+Do not put `DATABASE_URL` in Xcode or the browser. It belongs only in the Render Web Service environment.
