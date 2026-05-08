@@ -43,6 +43,171 @@ const machines = loadStoredArray('filtracore_machines');
 const filters = loadStoredArray('filtracore_filters');
 const inventory = loadStoredArray('filtracore_inventory');
 const maintenanceRecords = loadStoredArray('filtracore_maintenance');
+const API_BASE_URL = window.FILTRACORE_API_BASE_URL || '';
+let apiAvailable = false;
+
+function normalizeMachine(machine) {
+  return {
+    id: Number(machine.id ?? machine.machine_id),
+    name: machine.name || '',
+    type: machine.type || '',
+    location: machine.location || '',
+    department: machine.department || '',
+    brand: machine.brand || '',
+    model: machine.model || '',
+    assetId: machine.assetId ?? machine.asset_id ?? '',
+    createdAt: machine.createdAt ?? machine.created_at ?? null
+  };
+}
+
+function normalizeInventoryItem(item) {
+  const category = item.category || '';
+
+  return {
+    id: Number(item.id ?? item.inventory_id),
+    name: item.name || '',
+    category,
+    stock: Number(item.stock) || 0,
+    unitCost: Number(item.unitCost ?? item.unit_cost ?? item.cost) || 0,
+    reorderLevel: Number(item.reorderLevel ?? item.reorder_level) || 0,
+    lifeMonths: Number(item.lifeMonths ?? item.life_months) || getDefaultLifeMonths(category),
+    createdAt: item.createdAt ?? item.created_at ?? null
+  };
+}
+
+function normalizeFilter(filter) {
+  const productName = filter.productName ?? filter.product_name ?? 'Filter';
+  const category = filter.productCategory ?? filter.product_category ?? '';
+  const productId = filter.productId ?? filter.inventory_id ?? null;
+
+  return {
+    id: Number(filter.id ?? filter.filter_id),
+    machineId: Number(filter.machineId ?? filter.machine_id),
+    productId: productId === null || productId === undefined || productId === '' ? null : Number(productId),
+    productName,
+    cost: Number(filter.cost ?? filter.unit_cost) || 0,
+    lifeMonths: Number(filter.lifeMonths ?? filter.life_months) || getDefaultLifeMonths(category),
+    psi: filter.psi === null || filter.psi === undefined || filter.psi === '' ? null : Number(filter.psi),
+    psiHistory: Array.isArray(filter.psiHistory) ? filter.psiHistory : [],
+    installedAt: filter.installedAt ?? filter.installed_at ?? null,
+    dueDate: filter.dueDate ?? filter.due_date ?? null,
+    status: filter.status || 'Healthy',
+    createdAt: filter.createdAt ?? filter.created_at ?? null
+  };
+}
+
+function normalizeMaintenanceRecord(record) {
+  const filterId = record.filterId ?? record.filter_id ?? null;
+  const replacementProductId = record.replacementProductId ?? record.replacement_product_id ?? null;
+
+  return {
+    id: Number(record.id ?? record.maintenance_id),
+    machineId: Number(record.machineId ?? record.machine_id),
+    filterId: filterId === null || filterId === undefined || filterId === '' ? null : Number(filterId),
+    type: record.type ?? record.maintenance_type ?? 'General',
+    date: record.date ?? record.performed_at ?? null,
+    notes: record.notes || '',
+    replacementProductId: replacementProductId === null || replacementProductId === undefined || replacementProductId === ''
+      ? null
+      : Number(replacementProductId),
+    replacedFrom: record.replacedFrom ?? record.replaced_from ?? '',
+    replacedWith: record.replacedWith ?? record.replaced_with ?? '',
+    previousPsi: record.previousPsi ?? record.currentPsi ?? record.current_psi ?? null,
+    correctedPsi: record.correctedPsi ?? record.corrected_psi ?? null,
+    createdAt: record.createdAt ?? record.created_at ?? record.performed_at ?? null
+  };
+}
+
+function replaceCollection(collection, nextItems) {
+  collection.splice(0, collection.length, ...nextItems);
+}
+
+function saveLocalData() {
+  localStorage.setItem('filtracore_machines', JSON.stringify(machines));
+  localStorage.setItem('filtracore_filters', JSON.stringify(filters));
+  localStorage.setItem('filtracore_inventory', JSON.stringify(inventory));
+  localStorage.setItem('filtracore_maintenance', JSON.stringify(maintenanceRecords));
+}
+
+function applyServerState(state) {
+  if (!state || typeof state !== 'object') return;
+
+  replaceCollection(machines, Array.isArray(state.machines) ? state.machines.map(normalizeMachine) : machines);
+  replaceCollection(inventory, Array.isArray(state.inventory) ? state.inventory.map(normalizeInventoryItem) : inventory);
+  replaceCollection(filters, Array.isArray(state.filters) ? state.filters.map(normalizeFilter) : filters);
+  replaceCollection(
+    maintenanceRecords,
+    Array.isArray(state.maintenanceRecords) ? state.maintenanceRecords.map(normalizeMaintenanceRecord) : maintenanceRecords
+  );
+
+  saveLocalData();
+}
+
+async function apiRequest(path, options = {}) {
+  const headers = {
+    'Content-Type': 'application/json',
+    ...(options.headers || {})
+  };
+
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    ...options,
+    headers
+  });
+
+  const contentType = response.headers.get('content-type') || '';
+  const payload = contentType.includes('application/json') ? await response.json() : await response.text();
+
+  if (!response.ok) {
+    const message = typeof payload === 'object' && payload !== null && payload.error
+      ? payload.error
+      : `Request failed with status ${response.status}`;
+
+    throw new Error(message);
+  }
+
+  return payload;
+}
+
+async function loadServerData() {
+  try {
+    const state = await apiRequest('/api/state');
+    apiAvailable = true;
+    applyServerState(state);
+  } catch (error) {
+    apiAvailable = false;
+    console.warn('FiltraCore API unavailable. Using local browser data.', error);
+  }
+}
+
+function renderApp() {
+  renderMachines();
+  updateMachineOptions();
+  updateInventoryOptions();
+  updateMaintenanceOptions();
+  syncFilterScheduleFields(true);
+  renderFilters();
+  renderInventory();
+  renderMaintenance();
+  renderCostMetrics();
+  renderCostPerMachine();
+  renderRiskScore();
+  renderFinancialMetrics();
+  renderReports();
+  renderSmartSetup();
+}
+
+function setFormBusy(form, isBusy) {
+  if (!form) return;
+
+  form.querySelectorAll('button, input, select, textarea').forEach(element => {
+    element.disabled = Boolean(isBusy);
+  });
+}
+
+function showSaveError(error) {
+  console.error(error);
+  alert(error.message || 'Unable to save. Check the server connection and try again.');
+}
 
 const machineForm = document.querySelector('#machine-form');
 const machinesList = document.querySelector('#machines-list');
@@ -1011,7 +1176,7 @@ function getPsiFailurePrediction(psiHistory) {
   };
 }
 
-function updateFilterPsi(filterId) {
+async function updateFilterPsi(filterId) {
   const input = document.querySelector(`#psi-update-${filterId}`);
 
   if (!input || input.value === '') {
@@ -1027,6 +1192,27 @@ function updateFilterPsi(filterId) {
     return;
   }
 
+  if (apiAvailable) {
+    try {
+      input.disabled = true;
+      const state = await apiRequest(`/api/filters/${Number(filterId)}/psi`, {
+        method: 'PATCH',
+        body: JSON.stringify({
+          psi: newPsi
+        })
+      });
+
+      applyServerState(state);
+      renderApp();
+    } catch (error) {
+      showSaveError(error);
+    } finally {
+      input.disabled = false;
+    }
+
+    return;
+  }
+
   filter.psi = newPsi;
 
   if (!Array.isArray(filter.psiHistory)) {
@@ -1038,15 +1224,8 @@ function updateFilterPsi(filterId) {
     psi: newPsi
   });
 
-  localStorage.setItem('filtracore_filters', JSON.stringify(filters));
-  renderMachines();
-  renderFilters();
-  renderMaintenance();
-  updateMaintenancePsiPreview();
-  renderRiskScore();
-  renderFinancialMetrics();
-  renderReports();
-  renderSmartSetup();
+  saveLocalData();
+  renderApp();
 }
 
 function renderFilters() {
@@ -2611,7 +2790,7 @@ links.forEach(link => {
 });
 
 if (machineForm) {
-  machineForm.addEventListener('submit', (e) => {
+  machineForm.addEventListener('submit', async (e) => {
     e.preventDefault();
 
     const machine = {
@@ -2625,22 +2804,35 @@ if (machineForm) {
       assetId: document.querySelector('#machine-asset-id').value.trim()
     };
 
+    if (apiAvailable) {
+      try {
+        setFormBusy(machineForm, true);
+        const state = await apiRequest('/api/machines', {
+          method: 'POST',
+          body: JSON.stringify(machine)
+        });
+
+        applyServerState(state);
+        machineForm.reset();
+        renderApp();
+      } catch (error) {
+        showSaveError(error);
+      } finally {
+        setFormBusy(machineForm, false);
+      }
+
+      return;
+    }
+
     machines.push(machine);
-    localStorage.setItem('filtracore_machines', JSON.stringify(machines));
+    saveLocalData();
     machineForm.reset();
-    renderMachines();
-    updateMachineOptions();
-    updateMaintenanceOptions();
-    renderMaintenance();
-    renderRiskScore();
-    renderFinancialMetrics();
-    renderReports();
-    renderSmartSetup();
+    renderApp();
   });
 }
 
 if (filterForm) {
-  filterForm.addEventListener('submit', (e) => {
+  filterForm.addEventListener('submit', async (e) => {
     e.preventDefault();
     syncFilterScheduleFields(false);
 
@@ -2675,6 +2867,33 @@ if (filterForm) {
       return;
     }
 
+    if (apiAvailable) {
+      try {
+        setFormBusy(filterForm, true);
+        const state = await apiRequest('/api/filters', {
+          method: 'POST',
+          body: JSON.stringify({
+            machineId,
+            productId,
+            psi,
+            lifeMonths,
+            installedAt: installedAt.toISOString(),
+            dueDate: dueDate.toISOString()
+          })
+        });
+
+        applyServerState(state);
+        filterForm.reset();
+        renderApp();
+      } catch (error) {
+        showSaveError(error);
+      } finally {
+        setFormBusy(filterForm, false);
+      }
+
+      return;
+    }
+
     product.stock = Number(product.stock) - 1;
 
     const filter = {
@@ -2696,27 +2915,14 @@ if (filterForm) {
     };
 
     filters.push(filter);
-    localStorage.setItem('filtracore_filters', JSON.stringify(filters));
-    localStorage.setItem('filtracore_inventory', JSON.stringify(inventory));
+    saveLocalData();
     filterForm.reset();
-    syncFilterScheduleFields(true);
-    renderMachines();
-    renderFilters();
-    renderInventory();
-    updateInventoryOptions();
-    updateMaintenanceOptions();
-    renderMaintenance();
-    renderCostMetrics();
-    renderCostPerMachine();
-    renderRiskScore();
-    renderFinancialMetrics();
-    renderReports();
-    renderSmartSetup();
+    renderApp();
   });
 }
 
 if (inventoryForm) {
-  inventoryForm.addEventListener('submit', (e) => {
+  inventoryForm.addEventListener('submit', async (e) => {
     e.preventDefault();
 
     const category = document.querySelector('#inventory-category').value;
@@ -2731,23 +2937,36 @@ if (inventoryForm) {
       lifeMonths: getDefaultLifeMonths(category)
     };
 
+    if (apiAvailable) {
+      try {
+        setFormBusy(inventoryForm, true);
+        const state = await apiRequest('/api/inventory', {
+          method: 'POST',
+          body: JSON.stringify(item)
+        });
+
+        applyServerState(state);
+        inventoryForm.reset();
+        renderApp();
+      } catch (error) {
+        showSaveError(error);
+      } finally {
+        setFormBusy(inventoryForm, false);
+      }
+
+      return;
+    }
+
     inventory.push(item);
-    localStorage.setItem('filtracore_inventory', JSON.stringify(inventory));
+    saveLocalData();
     inventoryForm.reset();
-    renderInventory();
-    updateInventoryOptions();
-    syncFilterScheduleFields(true);
-    renderCostPerMachine();
-    renderRiskScore();
-    renderFinancialMetrics();
-    renderReports();
-    renderSmartSetup();
+    renderApp();
     console.log('Inventory item saved:', item);
   });
 }
 
 if (maintenanceForm) {
-  maintenanceForm.addEventListener('submit', (e) => {
+  maintenanceForm.addEventListener('submit', async (e) => {
     e.preventDefault();
 
     const machineId = Number(document.querySelector('#maintenance-machine').value);
@@ -2777,6 +2996,41 @@ if (maintenanceForm) {
 
     if (isReplacement && !replacementProductId) {
       alert('Select the replacement filter product');
+      return;
+    }
+
+    if (!isReplacement && correctedPsi !== null && !filterId) {
+      alert('Select a filter before entering corrected PSI');
+      return;
+    }
+
+    if (apiAvailable) {
+      try {
+        setFormBusy(maintenanceForm, true);
+        const state = await apiRequest('/api/maintenance', {
+          method: 'POST',
+          body: JSON.stringify({
+            machineId,
+            filterId,
+            type,
+            date,
+            notes,
+            replacementProductId,
+            correctedPsi
+          })
+        });
+
+        applyServerState(state);
+        maintenanceForm.reset();
+        renderApp();
+        updateMaintenancePsiPreview();
+        generateMaintenanceReport();
+      } catch (error) {
+        showSaveError(error);
+      } finally {
+        setFormBusy(maintenanceForm, false);
+      }
+
       return;
     }
 
@@ -2829,16 +3083,10 @@ if (maintenanceForm) {
       filter.psi = null;
       filter.psiHistory = [];
 
-      localStorage.setItem('filtracore_filters', JSON.stringify(filters));
-      localStorage.setItem('filtracore_inventory', JSON.stringify(inventory));
+      saveLocalData();
     }
 
     if (!isReplacement && correctedPsi !== null) {
-      if (!filterId) {
-        alert('Select a filter before entering corrected PSI');
-        return;
-      }
-
       const filter = filters.find(filter => filter.id === filterId);
 
       if (!filter) {
@@ -2859,7 +3107,7 @@ if (maintenanceForm) {
         source: 'maintenance'
       });
 
-      localStorage.setItem('filtracore_filters', JSON.stringify(filters));
+      saveLocalData();
     }
 
     if (isReplacement && correctedPsi !== null && filterId) {
@@ -2875,24 +3123,15 @@ if (maintenanceForm) {
           }
         ];
 
-        localStorage.setItem('filtracore_filters', JSON.stringify(filters));
+        saveLocalData();
       }
     }
 
     maintenanceRecords.push(record);
-    localStorage.setItem('filtracore_maintenance', JSON.stringify(maintenanceRecords));
+    saveLocalData();
     maintenanceForm.reset();
+    renderApp();
     updateMaintenancePsiPreview();
-    updateMaintenanceOptions();
-    renderMaintenance();
-    renderFilters();
-    renderCostMetrics();
-    renderCostPerMachine();
-    renderRiskScore();
-    renderFinancialMetrics();
-    renderReports();
-    renderMachines();
-    renderInventory();
     generateMaintenanceReport();
   });
 }
@@ -3067,20 +3306,11 @@ if (manualModal) {
   });
 }
 
-// default view
-showSection('dashboard');
-setSmartSetupOpen(setupState.widgetOpen);
-renderMachines();
-updateMachineOptions();
-updateInventoryOptions();
-updateMaintenanceOptions();
-syncFilterScheduleFields(true);
-renderFilters();
-renderInventory();
-renderMaintenance();
-renderCostMetrics();
-renderCostPerMachine();
-renderRiskScore();
-renderFinancialMetrics();
-renderReports();
-renderSmartSetup();
+async function initializeApp() {
+  showSection('dashboard');
+  setSmartSetupOpen(setupState.widgetOpen);
+  await loadServerData();
+  renderApp();
+}
+
+initializeApp();

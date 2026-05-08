@@ -1,0 +1,32 @@
+{
+  "name": "filtracore-v2",
+  "version": "1.0.0",
+  "description": "",
+  "main": "server.js",
+  "scripts": {
+    "check": "node --check server.js && node --check script.js",
+    "test": "npm run check",
+    "start": "node server.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/BastidaDavid/filtracore-v2.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "engines": {
+    "node": ">=20"
+  },
+  "bugs": {
+    "url": "https://github.com/BastidaDavid/filtracore-v2/issues"
+  },
+  "homepage": "https://github.com/BastidaDavid/filtracore-v2#readme",
+  "dependencies": {
+    "cors": "^2.8.6",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "pg": "^8.20.0"
+  }
+}
