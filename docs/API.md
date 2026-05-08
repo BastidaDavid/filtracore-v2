@@ -13,7 +13,7 @@ http://localhost:3000
 Render production:
 
 ```text
-https://filtracore-v2.onrender.com
+https://filtracore-v2-api.onrender.com
 ```
 
 Use the production HTTPS URL in Xcode. Render HTTPS works with iOS App Transport Security without adding insecure exceptions.
@@ -195,14 +195,14 @@ Returns: full app state.
 5. Deploy.
 6. Confirm:
 
-If `https://filtracore-v2.onrender.com/server.js` downloads or displays code, the Render service is still configured as a Static Site. A Static Site cannot run Express API routes.
+If `https://filtracore-v2.onrender.com/server.js` downloads or displays code, that old Render service is still configured as a Static Site. A Static Site cannot run Express API routes.
 
 The API is correctly deployed only when these work:
 
 ```bash
-curl https://filtracore-v2.onrender.com/api/health
-curl https://filtracore-v2.onrender.com/api/version
-curl https://filtracore-v2.onrender.com/api/state
+curl https://filtracore-v2-api.onrender.com/api/health
+curl https://filtracore-v2-api.onrender.com/api/version
+curl https://filtracore-v2-api.onrender.com/api/state
 ```
 
 Expected health response:

@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: filtracore-v2
+    name: filtracore-v2-api
     runtime: node
     plan: free
     buildCommand: npm install
