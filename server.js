@@ -1,6 +1,7 @@
 require('dotenv').config()
 
 const path = require('path')
+const crypto = require('crypto')
 const express = require('express')
 const cors = require('cors')
 const { Pool } = require('pg')
@@ -36,6 +37,12 @@ function toNumber(value, fallback = 0) {
   return Number.isFinite(number) ? number : fallback
 }
 
+const passwordIterations = 210000
+const passwordKeyLength = 64
+const passwordDigest = 'sha512'
+const sessionDays = toNumber(process.env.FILTRACORE_SESSION_DAYS, 30)
+const defaultTenantSlug = 'default'
+
 function toNullableNumber(value) {
   if (value === null || value === undefined || value === '') return null
 
@@ -68,6 +75,66 @@ function getDefaultLifeMonths(category) {
   if (normalizedCategory.includes('water')) return 6
 
   return 6
+}
+
+function normalizeEmail(email) {
+  return String(email || '').trim().toLowerCase()
+}
+
+function normalizeLoginIdentifier(value) {
+  return normalizeEmail(value)
+}
+
+function hashPassword(password, salt = crypto.randomBytes(16).toString('hex')) {
+  const hash = crypto
+    .pbkdf2Sync(String(password), salt, passwordIterations, passwordKeyLength, passwordDigest)
+    .toString('hex')
+
+  return `pbkdf2:${passwordIterations}:${salt}:${hash}`
+}
+
+function verifyPassword(password, storedHash) {
+  try {
+    const [scheme, iterationsText, salt, expectedHash] = String(storedHash || '').split(':')
+
+    if (scheme !== 'pbkdf2' || !iterationsText || !salt || !expectedHash) {
+      return false
+    }
+
+    const expected = Buffer.from(expectedHash, 'hex')
+    const actual = crypto.pbkdf2Sync(
+      String(password),
+      salt,
+      toNumber(iterationsText),
+      expected.length,
+      passwordDigest
+    )
+
+    return expected.length === actual.length && crypto.timingSafeEqual(expected, actual)
+  } catch (error) {
+    return false
+  }
+}
+
+function hashToken(token) {
+  return crypto.createHash('sha256').update(String(token)).digest('hex')
+}
+
+function getBearerToken(req) {
+  const authorization = req.get('authorization') || ''
+  const match = authorization.match(/^Bearer\s+(.+)$/i)
+  return match ? match[1].trim() : null
+}
+
+function mapAuthUser(row) {
+  return {
+    id: Number(row.user_id),
+    email: row.email,
+    name: row.name || '',
+    role: row.role || 'user',
+    tenantId: Number(row.tenant_id),
+    tenantName: row.tenant_name || row.tenant || ''
+  }
 }
 
 function mapMachine(row) {
@@ -138,8 +205,35 @@ function mapMaintenance(row) {
 
 async function ensureSchema() {
   await pool.query(`
+    CREATE TABLE IF NOT EXISTS tenants (
+      tenant_id SERIAL PRIMARY KEY,
+      name TEXT NOT NULL,
+      slug TEXT UNIQUE NOT NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS users (
+      user_id SERIAL PRIMARY KEY,
+      tenant_id INTEGER REFERENCES tenants(tenant_id) ON DELETE CASCADE,
+      email TEXT UNIQUE NOT NULL,
+      name TEXT,
+      password_hash TEXT NOT NULL,
+      role TEXT DEFAULT 'admin',
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS sessions (
+      session_id SERIAL PRIMARY KEY,
+      user_id INTEGER REFERENCES users(user_id) ON DELETE CASCADE,
+      token_hash TEXT UNIQUE NOT NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      expires_at TIMESTAMP NOT NULL,
+      last_used_at TIMESTAMP
+    );
+
     CREATE TABLE IF NOT EXISTS machines (
       machine_id SERIAL PRIMARY KEY,
+      tenant_id INTEGER REFERENCES tenants(tenant_id) ON DELETE CASCADE,
       name TEXT NOT NULL,
       type TEXT NOT NULL,
       location TEXT NOT NULL,
@@ -152,6 +246,7 @@ async function ensureSchema() {
 
     CREATE TABLE IF NOT EXISTS inventory (
       inventory_id SERIAL PRIMARY KEY,
+      tenant_id INTEGER REFERENCES tenants(tenant_id) ON DELETE CASCADE,
       name TEXT NOT NULL,
       category TEXT NOT NULL,
       stock INTEGER DEFAULT 0,
@@ -163,6 +258,7 @@ async function ensureSchema() {
 
     CREATE TABLE IF NOT EXISTS filters (
       filter_id SERIAL PRIMARY KEY,
+      tenant_id INTEGER REFERENCES tenants(tenant_id) ON DELETE CASCADE,
       machine_id INTEGER REFERENCES machines(machine_id) ON DELETE CASCADE,
       inventory_id INTEGER REFERENCES inventory(inventory_id) ON DELETE SET NULL,
       psi INTEGER,
@@ -175,6 +271,7 @@ async function ensureSchema() {
 
     CREATE TABLE IF NOT EXISTS maintenance (
       maintenance_id SERIAL PRIMARY KEY,
+      tenant_id INTEGER REFERENCES tenants(tenant_id) ON DELETE CASCADE,
       machine_id INTEGER REFERENCES machines(machine_id) ON DELETE CASCADE,
       filter_id INTEGER REFERENCES filters(filter_id) ON DELETE SET NULL,
       maintenance_type TEXT,
@@ -189,19 +286,118 @@ async function ensureSchema() {
   `)
 
   await pool.query(`
+    ALTER TABLE machines ADD COLUMN IF NOT EXISTS tenant_id INTEGER REFERENCES tenants(tenant_id) ON DELETE CASCADE;
+    ALTER TABLE inventory ADD COLUMN IF NOT EXISTS tenant_id INTEGER REFERENCES tenants(tenant_id) ON DELETE CASCADE;
+    ALTER TABLE filters ADD COLUMN IF NOT EXISTS tenant_id INTEGER REFERENCES tenants(tenant_id) ON DELETE CASCADE;
+    ALTER TABLE maintenance ADD COLUMN IF NOT EXISTS tenant_id INTEGER REFERENCES tenants(tenant_id) ON DELETE CASCADE;
     ALTER TABLE inventory ADD COLUMN IF NOT EXISTS life_months INTEGER;
     ALTER TABLE maintenance ADD COLUMN IF NOT EXISTS replacement_product_id INTEGER REFERENCES inventory(inventory_id) ON DELETE SET NULL;
     ALTER TABLE maintenance ADD COLUMN IF NOT EXISTS replaced_from TEXT;
     ALTER TABLE maintenance ADD COLUMN IF NOT EXISTS replaced_with TEXT;
+
+    CREATE INDEX IF NOT EXISTS sessions_token_hash_idx ON sessions(token_hash);
+    CREATE INDEX IF NOT EXISTS sessions_user_id_idx ON sessions(user_id);
+    CREATE INDEX IF NOT EXISTS machines_tenant_id_idx ON machines(tenant_id);
+    CREATE INDEX IF NOT EXISTS inventory_tenant_id_idx ON inventory(tenant_id);
+    CREATE INDEX IF NOT EXISTS filters_tenant_id_idx ON filters(tenant_id);
+    CREATE INDEX IF NOT EXISTS maintenance_tenant_id_idx ON maintenance(tenant_id);
   `)
+
+  const tenantName = process.env.FILTRACORE_TENANT_NAME || 'FiltraCore Customer'
+  const tenantResult = await pool.query(
+    `
+    INSERT INTO tenants (name, slug)
+    VALUES ($1, $2)
+    ON CONFLICT (slug) DO UPDATE SET name = EXCLUDED.name
+    RETURNING tenant_id
+    `,
+    [tenantName, defaultTenantSlug]
+  )
+  const defaultTenantId = tenantResult.rows[0].tenant_id
+
+  await pool.query('UPDATE machines SET tenant_id = $1 WHERE tenant_id IS NULL', [defaultTenantId])
+  await pool.query('UPDATE inventory SET tenant_id = $1 WHERE tenant_id IS NULL', [defaultTenantId])
+  await pool.query(
+    `
+    UPDATE filters
+    SET tenant_id = machines.tenant_id
+    FROM machines
+    WHERE filters.machine_id = machines.machine_id
+      AND filters.tenant_id IS NULL
+    `
+  )
+  await pool.query('UPDATE filters SET tenant_id = $1 WHERE tenant_id IS NULL', [defaultTenantId])
+  await pool.query(
+    `
+    UPDATE maintenance
+    SET tenant_id = machines.tenant_id
+    FROM machines
+    WHERE maintenance.machine_id = machines.machine_id
+      AND maintenance.tenant_id IS NULL
+    `
+  )
+  await pool.query('UPDATE maintenance SET tenant_id = $1 WHERE tenant_id IS NULL', [defaultTenantId])
+
+  await pool.query(`
+    ALTER TABLE machines ALTER COLUMN tenant_id SET NOT NULL;
+    ALTER TABLE inventory ALTER COLUMN tenant_id SET NOT NULL;
+    ALTER TABLE filters ALTER COLUMN tenant_id SET NOT NULL;
+    ALTER TABLE maintenance ALTER COLUMN tenant_id SET NOT NULL;
+  `)
+
+  await seedAdminUser(defaultTenantId)
 }
 
-async function getState(db = pool) {
+async function seedAdminUser(defaultTenantId) {
+  const email = normalizeLoginIdentifier(process.env.FILTRACORE_ADMIN_USERNAME || process.env.FILTRACORE_ADMIN_EMAIL)
+  const password = process.env.FILTRACORE_ADMIN_PASSWORD
+  const name = process.env.FILTRACORE_ADMIN_NAME || 'FiltraCore Admin'
+
+  if (!email || !password) {
+    console.warn('FILTRACORE_ADMIN_USERNAME or FILTRACORE_ADMIN_EMAIL plus FILTRACORE_ADMIN_PASSWORD are not set. No admin user was seeded.')
+    return
+  }
+
+  const existing = await pool.query('SELECT user_id FROM users WHERE email = $1', [email])
+
+  if (existing.rowCount === 0) {
+    await pool.query(
+      `
+      INSERT INTO users (tenant_id, email, name, password_hash, role)
+      VALUES ($1, $2, $3, $4, $5)
+      `,
+      [defaultTenantId, email, name, hashPassword(password), 'admin']
+    )
+    return
+  }
+
+  if (process.env.FILTRACORE_RESET_ADMIN_PASSWORD === 'true') {
+    await pool.query(
+      `
+      UPDATE users
+      SET password_hash = $1,
+          name = $2,
+          tenant_id = $3
+      WHERE email = $4
+      `,
+      [hashPassword(password), name, defaultTenantId, email]
+    )
+  }
+}
+
+async function getState(auth, db = pool) {
   const client = db === pool ? await pool.connect() : db
+  const tenantId = auth.tenantId
 
   try {
-    const machinesResult = await client.query('SELECT * FROM machines ORDER BY machine_id DESC')
-    const inventoryResult = await client.query('SELECT * FROM inventory ORDER BY inventory_id DESC')
+    const machinesResult = await client.query(
+      'SELECT * FROM machines WHERE tenant_id = $1 ORDER BY machine_id DESC',
+      [tenantId]
+    )
+    const inventoryResult = await client.query(
+      'SELECT * FROM inventory WHERE tenant_id = $1 ORDER BY inventory_id DESC',
+      [tenantId]
+    )
     const filtersResult = await client.query(`
       SELECT
         filters.*,
@@ -209,10 +405,16 @@ async function getState(db = pool) {
         inventory.category AS product_category,
         inventory.unit_cost
       FROM filters
-      LEFT JOIN inventory ON inventory.inventory_id = filters.inventory_id
+      LEFT JOIN inventory
+        ON inventory.inventory_id = filters.inventory_id
+       AND inventory.tenant_id = filters.tenant_id
+      WHERE filters.tenant_id = $1
       ORDER BY filters.filter_id DESC
-    `)
-    const maintenanceResult = await client.query('SELECT * FROM maintenance ORDER BY performed_at DESC, maintenance_id DESC')
+    `, [tenantId])
+    const maintenanceResult = await client.query(
+      'SELECT * FROM maintenance WHERE tenant_id = $1 ORDER BY performed_at DESC, maintenance_id DESC',
+      [tenantId]
+    )
 
     const maintenanceRecords = maintenanceResult.rows.map(mapMaintenance)
     const psiHistoryByFilter = new Map()
@@ -261,8 +463,8 @@ async function getState(db = pool) {
   }
 }
 
-async function sendState(res, status = 200) {
-  const state = await getState()
+async function sendState(req, res, status = 200) {
+  const state = await getState(req.auth)
   res.status(status).json(state)
 }
 
@@ -287,6 +489,69 @@ function badRequest(message) {
   return error
 }
 
+function unauthorized(message = 'Sign in is required') {
+  const error = new Error(message)
+  error.statusCode = 401
+  error.publicMessage = message
+  return error
+}
+
+async function createSession(userId) {
+  const token = crypto.randomBytes(32).toString('base64url')
+
+  await pool.query(
+    `
+    INSERT INTO sessions (user_id, token_hash, expires_at)
+    VALUES ($1, $2, NOW() + ($3::int * INTERVAL '1 day'))
+    `,
+    [userId, hashToken(token), Math.max(1, sessionDays)]
+  )
+
+  return token
+}
+
+async function requireAuth(req, res, next) {
+  try {
+    const token = getBearerToken(req)
+
+    if (!token) {
+      throw unauthorized()
+    }
+
+    const result = await pool.query(
+      `
+      SELECT
+        users.user_id,
+        users.tenant_id,
+        users.email,
+        users.name,
+        users.role,
+        tenants.name AS tenant_name
+      FROM sessions
+      INNER JOIN users ON users.user_id = sessions.user_id
+      INNER JOIN tenants ON tenants.tenant_id = users.tenant_id
+      WHERE sessions.token_hash = $1
+        AND sessions.expires_at > NOW()
+      `,
+      [hashToken(token)]
+    )
+
+    if (result.rowCount === 0) {
+      throw unauthorized('Invalid or expired session')
+    }
+
+    req.auth = mapAuthUser(result.rows[0])
+
+    pool
+      .query('UPDATE sessions SET last_used_at = NOW() WHERE token_hash = $1', [hashToken(token)])
+      .catch(error => console.warn('Failed to update session activity', error))
+
+    next()
+  } catch (error) {
+    handleError(res, error, 'Authentication failed')
+  }
+}
+
 app.get('/api/health', async (req, res) => {
   try {
     await pool.query('SELECT 1')
@@ -304,9 +569,71 @@ app.get('/api/version', (req, res) => {
   })
 })
 
+app.post('/api/auth/login', async (req, res) => {
+  try {
+    const email = normalizeLoginIdentifier(req.body.username || req.body.email)
+    const password = req.body.password
+
+    if (!email || !password) {
+      throw badRequest('Cliente and password are required')
+    }
+
+    const result = await pool.query(
+      `
+      SELECT
+        users.user_id,
+        users.tenant_id,
+        users.email,
+        users.name,
+        users.role,
+        users.password_hash,
+        tenants.name AS tenant_name
+      FROM users
+      INNER JOIN tenants ON tenants.tenant_id = users.tenant_id
+      WHERE users.email = $1
+      `,
+      [email]
+    )
+
+    if (result.rowCount === 0 || !verifyPassword(password, result.rows[0].password_hash)) {
+      throw unauthorized('Invalid email or password')
+    }
+
+    const token = await createSession(result.rows[0].user_id)
+
+    res.json({
+      token,
+      user: mapAuthUser(result.rows[0])
+    })
+  } catch (error) {
+    handleError(res, error, 'Failed to sign in')
+  }
+})
+
+app.get('/api/auth/me', requireAuth, (req, res) => {
+  res.json({ user: req.auth })
+})
+
+app.post('/api/auth/logout', requireAuth, async (req, res) => {
+  try {
+    const token = getBearerToken(req)
+
+    if (token) {
+      await pool.query('DELETE FROM sessions WHERE token_hash = $1', [hashToken(token)])
+    }
+
+    res.json({ ok: true })
+  } catch (error) {
+    handleError(res, error, 'Failed to sign out')
+  }
+})
+
+app.use('/api', requireAuth)
+app.use('/machines', requireAuth)
+
 app.get('/api/state', async (req, res) => {
   try {
-    await sendState(res)
+    await sendState(req, res)
   } catch (error) {
     handleError(res, error, 'Failed to fetch app data')
   }
@@ -314,7 +641,7 @@ app.get('/api/state', async (req, res) => {
 
 app.get('/api/machines', async (req, res) => {
   try {
-    const state = await getState()
+    const state = await getState(req.auth)
     res.json(state.machines)
   } catch (error) {
     handleError(res, error, 'Failed to fetch machines')
@@ -323,7 +650,7 @@ app.get('/api/machines', async (req, res) => {
 
 app.get('/machines', async (req, res) => {
   try {
-    const state = await getState()
+    const state = await getState(req.auth)
     res.json(state.machines)
   } catch (error) {
     handleError(res, error, 'Failed to fetch machines')
@@ -351,6 +678,7 @@ async function createMachine(req, res) {
       `
       INSERT INTO machines
       (
+        tenant_id,
         name,
         type,
         location,
@@ -359,9 +687,10 @@ async function createMachine(req, res) {
         model,
         asset_id
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
       `,
       [
+        req.auth.tenantId,
         name,
         type,
         location,
@@ -372,7 +701,7 @@ async function createMachine(req, res) {
       ]
     )
 
-    await sendState(res, 201)
+    await sendState(req, res, 201)
   } catch (error) {
     handleError(res, error, 'Failed to create machine')
   }
@@ -383,7 +712,7 @@ app.post('/machines', createMachine)
 
 app.get('/api/inventory', async (req, res) => {
   try {
-    const state = await getState()
+    const state = await getState(req.auth)
     res.json(state.inventory)
   } catch (error) {
     handleError(res, error, 'Failed to fetch inventory')
@@ -412,6 +741,7 @@ app.post('/api/inventory', async (req, res) => {
       `
       INSERT INTO inventory
       (
+        tenant_id,
         name,
         category,
         stock,
@@ -419,9 +749,10 @@ app.post('/api/inventory', async (req, res) => {
         reorder_level,
         life_months
       )
-      VALUES ($1, $2, $3, $4, $5, $6)
+      VALUES ($1, $2, $3, $4, $5, $6, $7)
       `,
       [
+        req.auth.tenantId,
         name,
         category,
         toNumber(stock),
@@ -431,7 +762,7 @@ app.post('/api/inventory', async (req, res) => {
       ]
     )
 
-    await sendState(res, 201)
+    await sendState(req, res, 201)
   } catch (error) {
     handleError(res, error, 'Failed to create inventory item')
   }
@@ -439,7 +770,7 @@ app.post('/api/inventory', async (req, res) => {
 
 app.get('/api/filters', async (req, res) => {
   try {
-    const state = await getState()
+    const state = await getState(req.auth)
     res.json(state.filters)
   } catch (error) {
     handleError(res, error, 'Failed to fetch filters')
@@ -450,6 +781,7 @@ app.post('/api/filters', async (req, res) => {
   const client = await pool.connect()
 
   try {
+    const tenantId = req.auth.tenantId
     const machineId = toNullableNumber(req.body.machineId ?? req.body.machine_id)
     const inventoryId = toNullableNumber(req.body.productId ?? req.body.inventory_id)
     const lifeMonths = toNumber(req.body.lifeMonths ?? req.body.life_months)
@@ -464,8 +796,8 @@ app.post('/api/filters', async (req, res) => {
     await client.query('BEGIN')
 
     const machineResult = await client.query(
-      'SELECT machine_id FROM machines WHERE machine_id = $1',
-      [machineId]
+      'SELECT machine_id FROM machines WHERE machine_id = $1 AND tenant_id = $2',
+      [machineId, tenantId]
     )
 
     if (machineResult.rowCount === 0) {
@@ -473,8 +805,8 @@ app.post('/api/filters', async (req, res) => {
     }
 
     const inventoryResult = await client.query(
-      'SELECT inventory_id, stock FROM inventory WHERE inventory_id = $1 FOR UPDATE',
-      [inventoryId]
+      'SELECT inventory_id, stock FROM inventory WHERE inventory_id = $1 AND tenant_id = $2 FOR UPDATE',
+      [inventoryId, tenantId]
     )
 
     if (inventoryResult.rowCount === 0) {
@@ -489,6 +821,7 @@ app.post('/api/filters', async (req, res) => {
       `
       INSERT INTO filters
       (
+        tenant_id,
         machine_id,
         inventory_id,
         psi,
@@ -496,9 +829,10 @@ app.post('/api/filters', async (req, res) => {
         installed_at,
         due_date
       )
-      VALUES ($1, $2, $3, $4, $5, $6)
+      VALUES ($1, $2, $3, $4, $5, $6, $7)
       `,
       [
+        tenantId,
         machineId,
         inventoryId,
         psi,
@@ -509,12 +843,12 @@ app.post('/api/filters', async (req, res) => {
     )
 
     await client.query(
-      'UPDATE inventory SET stock = stock - 1 WHERE inventory_id = $1',
-      [inventoryId]
+      'UPDATE inventory SET stock = stock - 1 WHERE inventory_id = $1 AND tenant_id = $2',
+      [inventoryId, tenantId]
     )
 
     await client.query('COMMIT')
-    await sendState(res, 201)
+    await sendState(req, res, 201)
   } catch (error) {
     await client.query('ROLLBACK')
     handleError(res, error, 'Failed to create filter')
@@ -527,6 +861,7 @@ app.patch('/api/filters/:id/psi', async (req, res) => {
   const client = await pool.connect()
 
   try {
+    const tenantId = req.auth.tenantId
     const filterId = toNullableNumber(req.params.id)
     const psi = toNullableNumber(req.body.psi)
 
@@ -537,8 +872,8 @@ app.patch('/api/filters/:id/psi', async (req, res) => {
     await client.query('BEGIN')
 
     const filterResult = await client.query(
-      'SELECT filter_id, machine_id, psi FROM filters WHERE filter_id = $1 FOR UPDATE',
-      [filterId]
+      'SELECT filter_id, machine_id, psi FROM filters WHERE filter_id = $1 AND tenant_id = $2 FOR UPDATE',
+      [filterId, tenantId]
     )
 
     if (filterResult.rowCount === 0) {
@@ -548,14 +883,15 @@ app.patch('/api/filters/:id/psi', async (req, res) => {
     const filter = filterResult.rows[0]
 
     await client.query(
-      'UPDATE filters SET psi = $1 WHERE filter_id = $2',
-      [psi, filterId]
+      'UPDATE filters SET psi = $1 WHERE filter_id = $2 AND tenant_id = $3',
+      [psi, filterId, tenantId]
     )
 
     await client.query(
       `
       INSERT INTO maintenance
       (
+        tenant_id,
         machine_id,
         filter_id,
         maintenance_type,
@@ -563,9 +899,10 @@ app.patch('/api/filters/:id/psi', async (req, res) => {
         current_psi,
         corrected_psi
       )
-      VALUES ($1, $2, $3, $4, $5, $6)
+      VALUES ($1, $2, $3, $4, $5, $6, $7)
       `,
       [
+        tenantId,
         filter.machine_id,
         filterId,
         'PSI Update',
@@ -576,7 +913,7 @@ app.patch('/api/filters/:id/psi', async (req, res) => {
     )
 
     await client.query('COMMIT')
-    await sendState(res)
+    await sendState(req, res)
   } catch (error) {
     await client.query('ROLLBACK')
     handleError(res, error, 'Failed to update PSI')
@@ -587,7 +924,7 @@ app.patch('/api/filters/:id/psi', async (req, res) => {
 
 app.get('/api/maintenance', async (req, res) => {
   try {
-    const state = await getState()
+    const state = await getState(req.auth)
     res.json(state.maintenanceRecords)
   } catch (error) {
     handleError(res, error, 'Failed to fetch maintenance')
@@ -598,6 +935,7 @@ app.post('/api/maintenance', async (req, res) => {
   const client = await pool.connect()
 
   try {
+    const tenantId = req.auth.tenantId
     const machineId = toNullableNumber(req.body.machineId ?? req.body.machine_id)
     const filterId = toNullableNumber(req.body.filterId ?? req.body.filter_id)
     const replacementProductId = toNullableNumber(req.body.replacementProductId ?? req.body.replacement_product_id)
@@ -617,6 +955,15 @@ app.post('/api/maintenance', async (req, res) => {
 
     await client.query('BEGIN')
 
+    const machineResult = await client.query(
+      'SELECT machine_id FROM machines WHERE machine_id = $1 AND tenant_id = $2',
+      [machineId, tenantId]
+    )
+
+    if (machineResult.rowCount === 0) {
+      throw badRequest('Machine not found')
+    }
+
     let currentPsi = null
     let replacedFrom = null
     let replacedWith = null
@@ -628,11 +975,15 @@ app.post('/api/maintenance', async (req, res) => {
           filters.*,
           inventory.name AS product_name
         FROM filters
-        LEFT JOIN inventory ON inventory.inventory_id = filters.inventory_id
+        LEFT JOIN inventory
+          ON inventory.inventory_id = filters.inventory_id
+         AND inventory.tenant_id = filters.tenant_id
         WHERE filters.filter_id = $1
+          AND filters.machine_id = $2
+          AND filters.tenant_id = $3
         FOR UPDATE
         `,
-        [filterId]
+        [filterId, machineId, tenantId]
       )
 
       if (filterResult.rowCount === 0) {
@@ -640,8 +991,8 @@ app.post('/api/maintenance', async (req, res) => {
       }
 
       const replacementResult = await client.query(
-        'SELECT inventory_id, name, category, stock, life_months FROM inventory WHERE inventory_id = $1 FOR UPDATE',
-        [replacementProductId]
+        'SELECT inventory_id, name, category, stock, life_months FROM inventory WHERE inventory_id = $1 AND tenant_id = $2 FOR UPDATE',
+        [replacementProductId, tenantId]
       )
 
       if (replacementResult.rowCount === 0) {
@@ -663,8 +1014,8 @@ app.post('/api/maintenance', async (req, res) => {
       const dueDate = addMonths(performedAt, lifeMonths)
 
       await client.query(
-        'UPDATE inventory SET stock = stock - 1 WHERE inventory_id = $1',
-        [replacementProductId]
+        'UPDATE inventory SET stock = stock - 1 WHERE inventory_id = $1 AND tenant_id = $2',
+        [replacementProductId, tenantId]
       )
 
       await client.query(
@@ -677,6 +1028,7 @@ app.post('/api/maintenance', async (req, res) => {
           due_date = $4,
           psi = $5
         WHERE filter_id = $6
+          AND tenant_id = $7
         `,
         [
           replacementProductId,
@@ -684,13 +1036,14 @@ app.post('/api/maintenance', async (req, res) => {
           performedAt,
           dueDate,
           correctedPsi,
-          filterId
+          filterId,
+          tenantId
         ]
       )
     } else if (filterId && correctedPsi !== null) {
       const filterResult = await client.query(
-        'SELECT filter_id, psi FROM filters WHERE filter_id = $1 FOR UPDATE',
-        [filterId]
+        'SELECT filter_id, psi FROM filters WHERE filter_id = $1 AND machine_id = $2 AND tenant_id = $3 FOR UPDATE',
+        [filterId, machineId, tenantId]
       )
 
       if (filterResult.rowCount === 0) {
@@ -700,8 +1053,8 @@ app.post('/api/maintenance', async (req, res) => {
       currentPsi = toNullableNumber(filterResult.rows[0].psi)
 
       await client.query(
-        'UPDATE filters SET psi = $1 WHERE filter_id = $2',
-        [correctedPsi, filterId]
+        'UPDATE filters SET psi = $1 WHERE filter_id = $2 AND tenant_id = $3',
+        [correctedPsi, filterId, tenantId]
       )
     }
 
@@ -709,6 +1062,7 @@ app.post('/api/maintenance', async (req, res) => {
       `
       INSERT INTO maintenance
       (
+        tenant_id,
         machine_id,
         filter_id,
         maintenance_type,
@@ -720,9 +1074,10 @@ app.post('/api/maintenance', async (req, res) => {
         replaced_with,
         performed_at
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
       `,
       [
+        tenantId,
         machineId,
         filterId,
         type,
@@ -737,7 +1092,7 @@ app.post('/api/maintenance', async (req, res) => {
     )
 
     await client.query('COMMIT')
-    await sendState(res, 201)
+    await sendState(req, res, 201)
   } catch (error) {
     await client.query('ROLLBACK')
     handleError(res, error, 'Failed to create maintenance record')
@@ -764,13 +1119,23 @@ app.get('/script.js', (req, res) => {
 
 app.use('/img', express.static(path.join(__dirname, 'img')))
 
-ensureSchema()
-  .then(() => {
-    app.listen(port, () => {
-      console.log(`Server running on port ${port}`)
-    })
+async function startServer() {
+  await ensureSchema()
+
+  app.listen(port, () => {
+    console.log(`Server running on port ${port}`)
   })
-  .catch(error => {
+}
+
+if (require.main === module) {
+  startServer().catch(error => {
     console.error('Failed to initialize database schema', error)
     process.exit(1)
   })
+}
+
+module.exports = {
+  app,
+  pool,
+  ensureSchema
+}

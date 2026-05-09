@@ -10,6 +10,82 @@ body {
   color: #0f172a;
 }
 
+body.auth-required .app-header,
+body.auth-required .app-layout {
+  display: none;
+}
+
+.login-screen[hidden] {
+  display: none;
+}
+
+.login-screen {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: linear-gradient(135deg, #f8fafc 0%, #eff6ff 52%, #ecfdf5 100%);
+}
+
+.login-panel {
+  width: min(100%, 390px);
+  display: grid;
+  gap: 16px;
+  padding: 28px;
+  border: 1px solid #dbe4ef;
+  border-radius: 12px;
+  background: #ffffff;
+  box-shadow: 0 24px 70px rgba(15, 23, 42, 0.16);
+}
+
+.login-logo {
+  width: 68px;
+  height: 68px;
+  object-fit: contain;
+}
+
+.login-panel h2 {
+  font-size: 24px;
+  letter-spacing: 0;
+}
+
+.login-error {
+  min-height: 20px;
+  color: #dc2626;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.account-panel {
+  width: 100%;
+  margin-top: auto;
+  display: grid;
+  gap: 10px;
+  padding-top: 18px;
+  border-top: 1px solid #e2e8f0;
+}
+
+.account-panel[hidden] {
+  display: none;
+}
+
+.account-panel span {
+  color: #334155;
+  font-size: 13px;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.account-panel button {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #0f172a;
+  font-weight: 800;
+}
+
 /* HEADER */
 .app-header {
   position: fixed;

@@ -25,7 +25,58 @@ Use the production HTTPS URL in Xcode. Render HTTPS works with iOS App Transport
 - IDs are integers.
 - Date values are returned as ISO strings.
 - Mutating endpoints return the full app state so the app can refresh its local UI in one response.
-- Current auth: none. Add token-based auth before exposing production customer data.
+- Except health, version, and login, API routes require `Authorization: Bearer <token>`.
+- Data is scoped by tenant/customer on the server.
+
+## Authentication
+
+Set these Render environment variables before production use:
+
+```text
+FILTRACORE_ADMIN_USERNAME=Armand01
+FILTRACORE_ADMIN_EMAIL=admin@example.com
+FILTRACORE_ADMIN_PASSWORD=<strong password>
+FILTRACORE_ADMIN_NAME=Admin Name
+FILTRACORE_TENANT_NAME=Customer Name
+```
+
+On startup, the server creates the default tenant and seeds the admin user if it does not already exist.
+To intentionally overwrite the seeded admin password later, set `FILTRACORE_RESET_ADMIN_PASSWORD=true` for one deploy, then remove it.
+
+### POST `/api/auth/login`
+
+Request:
+
+```json
+{
+  "username": "Armand01",
+  "password": "password"
+}
+```
+
+Response:
+
+```json
+{
+  "token": "session-token",
+  "user": {
+    "id": 1,
+    "email": "armand01",
+    "name": "Admin Name",
+    "role": "admin",
+    "tenantId": 1,
+    "tenantName": "Customer Name"
+  }
+}
+```
+
+### GET `/api/auth/me`
+
+Returns the signed-in user for the bearer token.
+
+### POST `/api/auth/logout`
+
+Invalidates the current bearer token.
 
 ## Health And Compatibility
 
@@ -202,7 +253,11 @@ The API is correctly deployed only when these work:
 ```bash
 curl https://filtracore-v2-api.onrender.com/api/health
 curl https://filtracore-v2-api.onrender.com/api/version
-curl https://filtracore-v2-api.onrender.com/api/state
+curl -X POST https://filtracore-v2-api.onrender.com/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"username":"Armand01","password":"password"}'
+curl https://filtracore-v2-api.onrender.com/api/state \
+  -H "Authorization: Bearer <token>"
 ```
 
 Expected health response:

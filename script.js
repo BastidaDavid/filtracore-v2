@@ -44,6 +44,10 @@ const filters = loadStoredArray('filtracore_filters');
 const inventory = loadStoredArray('filtracore_inventory');
 const maintenanceRecords = loadStoredArray('filtracore_maintenance');
 const API_BASE_URL = window.FILTRACORE_API_BASE_URL || '';
+const authTokenKey = 'filtracore_auth_token';
+const authUserKey = 'filtracore_auth_user';
+let authToken = localStorage.getItem(authTokenKey) || '';
+let currentUser = loadStoredObject(authUserKey, null);
 let apiAvailable = false;
 
 function normalizeMachine(machine) {
@@ -129,6 +133,17 @@ function saveLocalData() {
   localStorage.setItem('filtracore_maintenance', JSON.stringify(maintenanceRecords));
 }
 
+function clearLocalOperationalData() {
+  replaceCollection(machines, []);
+  replaceCollection(filters, []);
+  replaceCollection(inventory, []);
+  replaceCollection(maintenanceRecords, []);
+  localStorage.removeItem('filtracore_machines');
+  localStorage.removeItem('filtracore_filters');
+  localStorage.removeItem('filtracore_inventory');
+  localStorage.removeItem('filtracore_maintenance');
+}
+
 function applyServerState(state) {
   if (!state || typeof state !== 'object') return;
 
@@ -143,14 +158,65 @@ function applyServerState(state) {
   saveLocalData();
 }
 
+function updateAuthUI() {
+  const isSignedIn = Boolean(authToken);
+  const loginScreen = document.querySelector('#login-screen');
+  const accountPanel = document.querySelector('#account-panel');
+  const accountName = document.querySelector('#account-name');
+
+  document.body.classList.toggle('auth-required', !isSignedIn);
+
+  if (loginScreen) {
+    loginScreen.hidden = isSignedIn;
+  }
+
+  if (accountPanel) {
+    accountPanel.hidden = !isSignedIn;
+  }
+
+  if (accountName) {
+    accountName.textContent = currentUser?.name || currentUser?.email || '';
+  }
+}
+
+function setAuthSession(session) {
+  authToken = session.token || '';
+  currentUser = session.user || null;
+
+  if (authToken) {
+    localStorage.setItem(authTokenKey, authToken);
+  }
+
+  if (currentUser) {
+    localStorage.setItem(authUserKey, JSON.stringify(currentUser));
+  }
+
+  updateAuthUI();
+}
+
+function clearAuthSession() {
+  authToken = '';
+  currentUser = null;
+  apiAvailable = false;
+  localStorage.removeItem(authTokenKey);
+  localStorage.removeItem(authUserKey);
+  clearLocalOperationalData();
+  updateAuthUI();
+}
+
 async function apiRequest(path, options = {}) {
+  const { auth = true, ...fetchOptions } = options;
   const headers = {
     'Content-Type': 'application/json',
-    ...(options.headers || {})
+    ...(fetchOptions.headers || {})
   };
 
+  if (auth && authToken) {
+    headers.Authorization = `Bearer ${authToken}`;
+  }
+
   const response = await fetch(`${API_BASE_URL}${path}`, {
-    ...options,
+    ...fetchOptions,
     headers
   });
 
@@ -158,6 +224,10 @@ async function apiRequest(path, options = {}) {
   const payload = contentType.includes('application/json') ? await response.json() : await response.text();
 
   if (!response.ok) {
+    if (response.status === 401 && auth) {
+      clearAuthSession();
+    }
+
     const message = typeof payload === 'object' && payload !== null && payload.error
       ? payload.error
       : `Request failed with status ${response.status}`;
@@ -166,6 +236,32 @@ async function apiRequest(path, options = {}) {
   }
 
   return payload;
+}
+
+async function signIn(email, password) {
+  const session = await apiRequest('/api/auth/login', {
+    method: 'POST',
+    auth: false,
+    body: JSON.stringify({ username: email, password })
+  });
+
+  setAuthSession(session);
+  await loadServerData();
+  renderApp();
+}
+
+async function signOut() {
+  try {
+    if (authToken) {
+      await apiRequest('/api/auth/logout', {
+        method: 'POST'
+      });
+    }
+  } catch (error) {
+    console.warn('FiltraCore sign out could not reach the server.', error);
+  }
+
+  clearAuthSession();
 }
 
 async function loadServerData() {
@@ -209,6 +305,12 @@ function showSaveError(error) {
   alert(error.message || 'Unable to save. Check the server connection and try again.');
 }
 
+const loginForm = document.querySelector('#login-form');
+const loginEmailInput = document.querySelector('#login-email');
+const loginPasswordInput = document.querySelector('#login-password');
+const loginError = document.querySelector('#login-error');
+const loginSubmitButton = document.querySelector('#login-submit');
+const logoutButton = document.querySelector('#logout-button');
 const machineForm = document.querySelector('#machine-form');
 const machinesList = document.querySelector('#machines-list');
 const machineSearchInput = document.querySelector('#machine-search');
@@ -2774,6 +2876,40 @@ function renderRiskScore() {
   }).join('');
 }
 
+if (loginForm) {
+  loginForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+
+    if (loginError) {
+      loginError.textContent = '';
+    }
+
+    try {
+      if (loginSubmitButton) {
+        loginSubmitButton.disabled = true;
+        loginSubmitButton.textContent = 'Signing In...';
+      }
+
+      await signIn(loginEmailInput.value.trim(), loginPasswordInput.value);
+    } catch (error) {
+      if (loginError) {
+        loginError.textContent = error.message || 'Unable to sign in.';
+      }
+    } finally {
+      if (loginSubmitButton) {
+        loginSubmitButton.disabled = false;
+        loginSubmitButton.textContent = 'Sign In';
+      }
+    }
+  });
+}
+
+if (logoutButton) {
+  logoutButton.addEventListener('click', async () => {
+    await signOut();
+  });
+}
+
 links.forEach(link => {
   link.addEventListener('click', (e) => {
     e.preventDefault();
@@ -3309,7 +3445,12 @@ if (manualModal) {
 async function initializeApp() {
   showSection('dashboard');
   setSmartSetupOpen(setupState.widgetOpen);
-  await loadServerData();
+  updateAuthUI();
+
+  if (authToken) {
+    await loadServerData();
+  }
+
   renderApp();
 }
 

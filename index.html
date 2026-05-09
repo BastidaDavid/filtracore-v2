@@ -24,7 +24,32 @@
       <a href="#maintenance">Maintenance</a>
       <a href="#reports">Reports</a>
     </nav>
+
+    <div id="account-panel" class="account-panel" hidden>
+      <span id="account-name"></span>
+      <button id="logout-button" type="button">Sign Out</button>
+    </div>
   </header>
+
+  <section id="login-screen" class="login-screen" hidden>
+    <form id="login-form" class="login-panel">
+      <img src="img/logo.png" alt="FiltraCore Logo" class="login-logo" />
+      <h2>Sign in to FiltraCore</h2>
+
+      <div class="form-field">
+        <label for="login-email">Cliente</label>
+        <input type="text" id="login-email" autocomplete="username" required />
+      </div>
+
+      <div class="form-field">
+        <label for="login-password">Password</label>
+        <input type="password" id="login-password" autocomplete="current-password" required />
+      </div>
+
+      <button id="login-submit" type="submit">Sign In</button>
+      <p id="login-error" class="login-error" role="alert"></p>
+    </form>
+  </section>
 
   <main class="app-layout">
     <section id="dashboard" class="section-card hero-section">
