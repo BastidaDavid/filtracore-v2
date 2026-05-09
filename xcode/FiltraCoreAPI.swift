@@ -159,6 +159,10 @@ final class FiltraCoreAPI {
         try await request("api/machines", method: "POST", body: body)
     }
 
+    func deleteMachine(id: Int) async throws -> FiltraCoreState {
+        try await request("api/machines/\(id)", method: "DELETE")
+    }
+
     func createInventoryItem(_ body: CreateInventoryItemRequest) async throws -> FiltraCoreState {
         try await request("api/inventory", method: "POST", body: body)
     }
@@ -178,6 +182,16 @@ final class FiltraCoreAPI {
     private func request<Response: Decodable>(_ path: String) async throws -> Response {
         var request = URLRequest(url: baseURL.appendingPathComponent(path))
         request.httpMethod = "GET"
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        return try await send(request)
+    }
+
+    private func request<Response: Decodable>(
+        _ path: String,
+        method: String
+    ) async throws -> Response {
+        var request = URLRequest(url: baseURL.appendingPathComponent(path))
+        request.httpMethod = method
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         return try await send(request)
     }

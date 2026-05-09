@@ -389,6 +389,15 @@ const modalAlertCount = document.querySelector('#modal-alert-count');
 const modalCriticalCount = document.querySelector('#modal-critical-count');
 const modalWarningCount = document.querySelector('#modal-warning-count');
 const modalRiskExposure = document.querySelector('#modal-risk-exposure');
+const machineQRModal = document.querySelector('#machine-qr-modal');
+const closeMachineQRModal = document.querySelector('#close-machine-qr-modal');
+const closeMachineQRModalFooter = document.querySelector('#close-machine-qr-modal-footer');
+const printMachineQRBtn = document.querySelector('#print-machine-qr');
+const machineQRModalTitle = document.querySelector('#machine-qr-modal-title');
+const machineQRModalSubtitle = document.querySelector('#machine-qr-modal-subtitle');
+const machineQRCode = document.querySelector('#machine-qr-code');
+const machineQRDisplayCode = document.querySelector('#machine-qr-display-code');
+const machineQRPayload = document.querySelector('#machine-qr-payload');
 const openManualCard = document.querySelector('#open-manual-card');
 const manualModal = document.querySelector('#manual-modal');
 const closeManualModal = document.querySelector('#close-manual-modal');
@@ -846,19 +855,154 @@ function renderMachines() {
               <span class="status-pill status-${escapeHTML(operational.type)}">${escapeHTML(operational.status)}</span>
             </span>
             <span>
-              <button 
-                type="button" 
-                class="machine-delete-btn" 
-                onclick="deleteMachine(${Number(machine.id)})"
-              >
-                Delete
-              </button>
+              <div class="machine-action-buttons">
+                <button 
+                  type="button" 
+                  class="machine-qr-btn" 
+                  onclick="openMachineQR(${Number(machine.id)})"
+                >
+                  QR
+                </button>
+                <button 
+                  type="button" 
+                  class="machine-delete-btn" 
+                  onclick="deleteMachine(${Number(machine.id)})"
+                >
+                  Delete
+                </button>
+              </div>
             </span>
           </div>
         `;
       }).join('')}
     </div>
   `;
+}
+
+function getMachineQRPayload(machine) {
+  return `filtracore://machine/${machine.id}`;
+}
+
+function getMachineQRDisplayCode(machine) {
+  return `FC-M-${machine.id}`;
+}
+
+function openMachineQRModal() {
+  if (!machineQRModal) return;
+
+  machineQRModal.classList.add('is-open');
+  machineQRModal.setAttribute('aria-hidden', 'false');
+}
+
+function closeMachineQRModalWindow() {
+  if (!machineQRModal) return;
+
+  machineQRModal.classList.remove('is-open');
+  machineQRModal.setAttribute('aria-hidden', 'true');
+}
+
+async function openMachineQR(machineId) {
+  const machine = machines.find(item => item.id === Number(machineId));
+
+  if (!machine) {
+    alert('Machine not found.');
+    return;
+  }
+
+  const fallbackPayload = getMachineQRPayload(machine);
+  const fallbackDisplayCode = getMachineQRDisplayCode(machine);
+
+  if (machineQRModalTitle) {
+    machineQRModalTitle.textContent = `${machine.name} QR`;
+  }
+
+  if (machineQRModalSubtitle) {
+    machineQRModalSubtitle.textContent = [machine.type, machine.location].filter(Boolean).join(' • ') || 'Scan this code from the mobile app.';
+  }
+
+  if (machineQRDisplayCode) {
+    machineQRDisplayCode.textContent = fallbackDisplayCode;
+  }
+
+  if (machineQRPayload) {
+    machineQRPayload.textContent = fallbackPayload;
+  }
+
+  if (machineQRCode) {
+    machineQRCode.innerHTML = '<p class="empty-state">Loading QR...</p>';
+  }
+
+  openMachineQRModal();
+
+  if (!apiAvailable) {
+    if (machineQRCode) {
+      machineQRCode.innerHTML = '<p class="empty-state">Connect to the FiltraCore API to generate the QR image.</p>';
+    }
+
+    return;
+  }
+
+  try {
+    const qr = await apiRequest(`/api/machines/${encodeURIComponent(machine.id)}/qr`);
+
+    if (machineQRCode) {
+      machineQRCode.innerHTML = qr.svg || '<p class="empty-state">QR unavailable.</p>';
+    }
+
+    if (machineQRDisplayCode) {
+      machineQRDisplayCode.textContent = qr.displayCode || fallbackDisplayCode;
+    }
+
+    if (machineQRPayload) {
+      machineQRPayload.textContent = qr.payload || fallbackPayload;
+    }
+  } catch (error) {
+    if (machineQRCode) {
+      machineQRCode.innerHTML = `<p class="empty-state">${escapeHTML(error.message || 'Unable to load QR.')}</p>`;
+    }
+  }
+}
+
+function printMachineQR() {
+  if (!machineQRCode || !machineQRCode.innerHTML.trim()) return;
+
+  const title = machineQRModalTitle?.textContent || 'Machine QR';
+  const code = machineQRDisplayCode?.textContent || '';
+  const payload = machineQRPayload?.textContent || '';
+  const printWindow = window.open('', '_blank', 'width=520,height=680');
+
+  if (!printWindow) {
+    alert('Allow pop-ups to print this QR label.');
+    return;
+  }
+
+  printWindow.document.write(`
+    <!doctype html>
+    <html>
+      <head>
+        <title>${escapeHTML(title)}</title>
+        <style>
+          body { font-family: Arial, sans-serif; display: grid; place-items: center; min-height: 100vh; margin: 0; color: #0f172a; }
+          .label { width: 360px; border: 1px solid #cbd5e1; border-radius: 14px; padding: 24px; text-align: center; }
+          .qr svg { width: 260px; height: 260px; }
+          h1 { font-size: 22px; margin: 0 0 14px; }
+          strong { display: block; margin-top: 12px; font-size: 20px; }
+          p { margin: 8px 0 0; font-size: 11px; color: #64748b; overflow-wrap: anywhere; }
+        </style>
+      </head>
+      <body>
+        <div class="label">
+          <h1>${escapeHTML(title)}</h1>
+          <div class="qr">${machineQRCode.innerHTML}</div>
+          <strong>${escapeHTML(code)}</strong>
+          <p>${escapeHTML(payload)}</p>
+        </div>
+      </body>
+    </html>
+  `);
+  printWindow.document.close();
+  printWindow.focus();
+  printWindow.print();
 }
 
 async function deleteMachine(machineId) {
@@ -3466,6 +3610,32 @@ if (alertsModal) {
 if (archiveAllModalAlerts) {
   archiveAllModalAlerts.addEventListener('click', () => {
     archiveAllVisibleAlerts();
+  });
+}
+
+if (closeMachineQRModal) {
+  closeMachineQRModal.addEventListener('click', () => {
+    closeMachineQRModalWindow();
+  });
+}
+
+if (closeMachineQRModalFooter) {
+  closeMachineQRModalFooter.addEventListener('click', () => {
+    closeMachineQRModalWindow();
+  });
+}
+
+if (machineQRModal) {
+  machineQRModal.addEventListener('click', (e) => {
+    if (e.target === machineQRModal) {
+      closeMachineQRModalWindow();
+    }
+  });
+}
+
+if (printMachineQRBtn) {
+  printMachineQRBtn.addEventListener('click', () => {
+    printMachineQR();
   });
 }
 

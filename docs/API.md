@@ -143,6 +143,26 @@ Required: `name`, `type`, `location`.
 
 Returns: full app state.
 
+### DELETE `/api/machines/:id`
+
+Deletes one machine for the signed-in customer. Installed filters and maintenance records connected to that machine are deleted with it.
+
+Returns: full app state.
+
+### GET `/api/machines/:id/qr`
+
+Returns the signed-in customer's machine QR payload and SVG image.
+
+Response:
+
+```json
+{
+  "payload": "filtracore://machine/1",
+  "displayCode": "FC-M-1",
+  "svg": "<svg>...</svg>"
+}
+```
+
 ## Inventory
 
 ### GET `/api/inventory`

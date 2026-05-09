@@ -5,6 +5,7 @@ const crypto = require('crypto')
 const express = require('express')
 const cors = require('cors')
 const { Pool } = require('pg')
+const QRCode = require('qrcode')
 
 const app = express()
 const port = process.env.PORT || 3000
@@ -149,6 +150,14 @@ function mapMachine(row) {
     assetId: row.asset_id || '',
     createdAt: row.created_at
   }
+}
+
+function getMachineQRPayload(machineId) {
+  return `filtracore://machine/${machineId}`
+}
+
+function getMachineQRDisplayCode(machineId) {
+  return `FC-M-${machineId}`
 }
 
 function mapInventory(row) {
@@ -709,6 +718,96 @@ async function createMachine(req, res) {
 
 app.post('/api/machines', createMachine)
 app.post('/machines', createMachine)
+
+async function getMachineQR(req, res) {
+  try {
+    const tenantId = req.auth.tenantId
+    const machineId = toNullableNumber(req.params.id)
+
+    if (!machineId) {
+      throw badRequest('Machine is required')
+    }
+
+    const machineResult = await pool.query(
+      'SELECT machine_id FROM machines WHERE machine_id = $1 AND tenant_id = $2',
+      [machineId, tenantId]
+    )
+
+    if (machineResult.rowCount === 0) {
+      throw badRequest('Machine not found')
+    }
+
+    const payload = getMachineQRPayload(machineId)
+    const svg = await QRCode.toString(payload, {
+      type: 'svg',
+      width: 300,
+      margin: 2,
+      errorCorrectionLevel: 'M'
+    })
+
+    res.json({
+      payload,
+      displayCode: getMachineQRDisplayCode(machineId),
+      svg
+    })
+  } catch (error) {
+    handleError(res, error, 'Failed to generate machine QR')
+  }
+}
+
+app.get('/api/machines/:id/qr', getMachineQR)
+app.get('/machines/:id/qr', getMachineQR)
+
+async function deleteMachine(req, res) {
+  const client = await pool.connect()
+
+  try {
+    const tenantId = req.auth.tenantId
+    const machineId = toNullableNumber(req.params.id)
+
+    if (!machineId) {
+      throw badRequest('Machine is required')
+    }
+
+    await client.query('BEGIN')
+
+    const machineResult = await client.query(
+      'SELECT machine_id FROM machines WHERE machine_id = $1 AND tenant_id = $2 FOR UPDATE',
+      [machineId, tenantId]
+    )
+
+    if (machineResult.rowCount === 0) {
+      throw badRequest('Machine not found')
+    }
+
+    await client.query(
+      'DELETE FROM maintenance WHERE machine_id = $1 AND tenant_id = $2',
+      [machineId, tenantId]
+    )
+
+    await client.query(
+      'DELETE FROM filters WHERE machine_id = $1 AND tenant_id = $2',
+      [machineId, tenantId]
+    )
+
+    await client.query(
+      'DELETE FROM machines WHERE machine_id = $1 AND tenant_id = $2',
+      [machineId, tenantId]
+    )
+
+    const state = await getState(req.auth, client)
+    await client.query('COMMIT')
+    res.json(state)
+  } catch (error) {
+    await client.query('ROLLBACK')
+    handleError(res, error, 'Failed to delete machine')
+  } finally {
+    client.release()
+  }
+}
+
+app.delete('/api/machines/:id', deleteMachine)
+app.delete('/machines/:id', deleteMachine)
 
 app.get('/api/inventory', async (req, res) => {
   try {

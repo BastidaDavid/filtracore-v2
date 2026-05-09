@@ -1990,6 +1990,13 @@ button {
   line-height: 1.35;
 }
 
+.machine-action-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.machine-qr-btn,
 .machine-delete-btn {
   border: 1px solid #fecaca;
   background: #fff1f2;
@@ -2001,9 +2008,80 @@ button {
   cursor: pointer;
 }
 
+.machine-qr-btn {
+  border-color: #bfdbfe;
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+
+.machine-qr-btn:hover {
+  background: #dbeafe;
+  border-color: #93c5fd;
+}
+
 .machine-delete-btn:hover {
   background: #ffe4e6;
   border-color: #fda4af;
+}
+
+.machine-qr-modal-card {
+  max-width: 520px;
+}
+
+.machine-qr-preview {
+  display: grid;
+  gap: 18px;
+  justify-items: center;
+  padding: 18px;
+  border: 1px solid #e2e8f0;
+  border-radius: 16px;
+  background: #f8fafc;
+}
+
+.machine-qr-code {
+  width: min(300px, 100%);
+  aspect-ratio: 1;
+  display: grid;
+  place-items: center;
+  padding: 12px;
+  border: 1px solid #cbd5e1;
+  border-radius: 14px;
+  background: #ffffff;
+}
+
+.machine-qr-code svg {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+.machine-qr-details {
+  width: 100%;
+  text-align: center;
+}
+
+.machine-qr-details span {
+  display: block;
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.machine-qr-details strong {
+  display: block;
+  margin-top: 4px;
+  color: #0f172a;
+  font-size: 22px;
+  font-weight: 900;
+}
+
+.machine-qr-details p {
+  margin: 8px 0 0;
+  color: #64748b;
+  font-size: 12px;
+  overflow-wrap: anywhere;
 }
 
 .status-pill {

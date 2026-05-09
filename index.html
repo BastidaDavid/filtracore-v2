@@ -764,6 +764,35 @@
     </section>
   </main>
 
+  <div id="machine-qr-modal" class="modal-overlay" aria-hidden="true">
+    <div class="modal-card machine-qr-modal-card" role="dialog" aria-modal="true" aria-labelledby="machine-qr-modal-title">
+      <div class="modal-header">
+        <div>
+          <span class="section-label">Machine Label</span>
+          <h2 id="machine-qr-modal-title">Machine QR</h2>
+          <p id="machine-qr-modal-subtitle">Scan this code from the mobile app to open the machine record.</p>
+        </div>
+        <button type="button" id="close-machine-qr-modal" class="modal-close">×</button>
+      </div>
+
+      <div class="machine-qr-preview">
+        <div id="machine-qr-code" class="machine-qr-code">
+          <p class="empty-state">Loading QR...</p>
+        </div>
+        <div class="machine-qr-details">
+          <span>Code</span>
+          <strong id="machine-qr-display-code">FC-M-000</strong>
+          <p id="machine-qr-payload">filtracore://machine/0</p>
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button type="button" id="print-machine-qr" class="secondary-btn">Print QR</button>
+        <button type="button" id="close-machine-qr-modal-footer">Close</button>
+      </div>
+    </div>
+  </div>
+
   <div id="alerts-modal" class="modal-overlay" aria-hidden="true">
     <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="alerts-modal-title">
       <div class="modal-header">
