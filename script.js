@@ -817,6 +817,7 @@ function renderMachines() {
         <span>Filter</span>
         <span>PSI</span>
         <span>Status</span>
+        <span>Actions</span>
       </div>
 
       ${visibleMachines.map(machine => {
@@ -844,11 +845,63 @@ function renderMachines() {
             <span>
               <span class="status-pill status-${escapeHTML(operational.type)}">${escapeHTML(operational.status)}</span>
             </span>
+            <span>
+              <button 
+                type="button" 
+                class="machine-delete-btn" 
+                onclick="deleteMachine(${Number(machine.id)})"
+              >
+                Delete
+              </button>
+            </span>
           </div>
         `;
       }).join('')}
     </div>
   `;
+}
+
+async function deleteMachine(machineId) {
+  const machine = machines.find(item => item.id === Number(machineId));
+
+  if (!machine) {
+    alert('Machine not found.');
+    return;
+  }
+
+  const relatedFilters = filters.filter(filter => filter.machineId === machine.id).length;
+  const relatedMaintenance = maintenanceRecords.filter(record => record.machineId === machine.id).length;
+  const message = [
+    `Delete ${machine.name}?`,
+    relatedFilters || relatedMaintenance
+      ? `This will also remove ${relatedFilters} installed filter record(s) and ${relatedMaintenance} maintenance record(s) for this machine.`
+      : 'This machine has no connected filter or maintenance records.'
+  ].join('\n\n');
+
+  if (!confirm(message)) {
+    return;
+  }
+
+  if (apiAvailable) {
+    try {
+      const state = await apiRequest(`/api/machines/${encodeURIComponent(machine.id)}`, {
+        method: 'DELETE'
+      });
+
+      applyServerState(state);
+      renderApp();
+    } catch (error) {
+      showSaveError(error);
+    }
+
+    return;
+  }
+
+  replaceCollection(machines, machines.filter(item => item.id !== machine.id));
+  replaceCollection(filters, filters.filter(filter => filter.machineId !== machine.id));
+  replaceCollection(maintenanceRecords, maintenanceRecords.filter(record => record.machineId !== machine.id));
+  saveLocalData();
+  renderApp();
 }
 
 if (machineSearchInput) {
