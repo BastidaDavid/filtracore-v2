@@ -110,7 +110,10 @@
   <section id="restaurant-screen" class="restaurant-screen" hidden>
     <div class="restaurant-shell">
       <div class="restaurant-heading">
-        <button type="button" id="restaurant-logout-button" class="restaurant-logout-btn">Sign Out</button>
+        <div class="restaurant-heading-actions">
+          <button type="button" id="client-add-workspace-button" class="restaurant-add-btn" aria-label="Add business workspace" title="Add business workspace" hidden>+</button>
+          <button type="button" id="restaurant-logout-button" class="restaurant-logout-btn">Sign Out</button>
+        </div>
         <img src="img/logo.png" alt="FiltraCore Logo" class="login-logo" />
         <span id="restaurant-context-label" class="section-label">Bastida Systems Cerebro</span>
         <h2 id="restaurant-title">Choose Restaurant</h2>
@@ -208,6 +211,56 @@
       </div>
     </div>
   </section>
+
+  <div id="client-workspace-modal" class="modal-overlay client-workspace-modal" hidden>
+    <form id="client-workspace-form" class="modal-card client-workspace-form-card restaurant-form" aria-labelledby="client-workspace-title">
+      <div class="modal-header client-workspace-modal-header">
+        <div>
+          <span class="section-label">Account workspace</span>
+          <h2 id="client-workspace-title">Add business</h2>
+          <p>Create another restaurant, casino, retail, warehouse, or service location under this same login.</p>
+        </div>
+        <button type="button" id="client-workspace-close" class="modal-close" aria-label="Close add business form">×</button>
+      </div>
+
+      <div class="client-workspace-grid">
+        <div class="form-field">
+          <label for="client-workspace-business-name">Business / Location Name</label>
+          <input type="text" id="client-workspace-business-name" autocomplete="organization" placeholder="PTS Banquets, Casino Bar, Warehouse A..." required />
+        </div>
+
+        <div class="form-field">
+          <label for="client-workspace-business-type">Business Type</label>
+          <select id="client-workspace-business-type">
+            <option>Restaurant</option>
+            <option>Hospitality</option>
+            <option>Casino</option>
+            <option>Retail</option>
+            <option>Warehouse</option>
+            <option>Other</option>
+          </select>
+        </div>
+
+        <div class="form-field">
+          <label for="client-workspace-identity-label">Identity / Concept</label>
+          <input type="text" id="client-workspace-identity-label" placeholder="Sports bar, banquets, casino floor..." maxlength="80" />
+        </div>
+
+        <div class="form-field">
+          <label for="client-workspace-logo">Logo or Photo</label>
+          <input type="file" id="client-workspace-logo" accept="image/png,image/jpeg" />
+          <small>PNG or JPG under 800 KB.</small>
+        </div>
+
+        <div id="client-workspace-logo-preview" class="restaurant-logo-preview" hidden>
+          <span>No logo selected</span>
+        </div>
+      </div>
+
+      <button id="client-workspace-submit" type="submit">Create Workspace</button>
+      <p id="client-workspace-status" class="login-error" role="alert"></p>
+    </form>
+  </div>
 
   <main class="app-layout">
     <section id="dashboard" class="section-card hero-section">

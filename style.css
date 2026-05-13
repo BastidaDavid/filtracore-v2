@@ -61,10 +61,44 @@ body.restaurant-required .app-layout {
   backdrop-filter: blur(20px);
 }
 
-.restaurant-logout-btn {
+.restaurant-heading-actions {
   position: absolute;
   top: 22px;
   right: 22px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.restaurant-add-btn {
+  width: 42px;
+  min-width: 42px;
+  height: 42px;
+  min-height: 42px !important;
+  padding: 0 !important;
+  display: grid;
+  place-items: center;
+  border: 1px solid #dbe4ef !important;
+  border-radius: 999px !important;
+  background: #0f172a !important;
+  color: #ffffff !important;
+  font-size: 26px;
+  line-height: 1;
+  box-shadow: 0 12px 30px rgba(15, 23, 42, 0.14) !important;
+}
+
+.restaurant-add-btn[hidden] {
+  display: none;
+}
+
+.restaurant-add-btn:hover,
+.restaurant-add-btn:focus-visible {
+  border-color: #0f172a !important;
+  background: #172033 !important;
+  transform: translateY(-1px);
+}
+
+.restaurant-logout-btn {
   min-height: 42px !important;
   border: 1px solid #dbe4ef !important;
   border-radius: 999px !important;
@@ -1656,6 +1690,46 @@ button:hover {
 .valued-client-card button:focus-visible {
   background: rgba(203, 213, 225, 0.92) !important;
   transform: none !important;
+}
+
+.client-workspace-modal {
+  background: rgba(15, 23, 42, 0.36);
+  backdrop-filter: blur(16px) saturate(1.08);
+}
+
+.client-workspace-form-card {
+  width: min(560px, calc(100vw - 36px));
+  display: grid;
+  gap: 18px;
+  padding: 26px;
+  border: 1px solid rgba(255, 255, 255, 0.82);
+  border-radius: 28px;
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: 0 34px 90px rgba(15, 23, 42, 0.24);
+  backdrop-filter: blur(24px);
+}
+
+.client-workspace-modal-header {
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+
+.client-workspace-modal-header h2 {
+  color: #0f172a;
+  font-size: 28px;
+  letter-spacing: 0;
+}
+
+.client-workspace-modal-header p {
+  max-width: 420px;
+  color: #64748b;
+  font-weight: 700;
+  line-height: 1.45;
+}
+
+.client-workspace-grid {
+  display: grid;
+  gap: 14px;
 }
 
 .modal-metrics {
@@ -5029,7 +5103,7 @@ button.clickable-kpi small::before,
     border-radius: 22px;
   }
 
-  .restaurant-logout-btn {
+  .restaurant-heading-actions {
     position: static;
     justify-self: end;
     margin-bottom: 8px;

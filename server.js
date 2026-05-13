@@ -22,7 +22,7 @@ app.use((req, res, next) => {
   next()
 })
 app.use(cors())
-app.use(express.json({ limit: '1mb' }))
+app.use(express.json({ limit: '2mb' }))
 
 const pool = new Pool({
   connectionString: databaseUrl,
@@ -145,7 +145,7 @@ function normalizeLogoDataUrl(value) {
   const logo = String(value || '').trim()
   if (!logo) return ''
 
-  if (logo.length > 800000) {
+  if (logo.length > 1100000) {
     throw badRequest('Logo image must be under 800 KB')
   }
 
@@ -1574,6 +1574,40 @@ app.get('/api/restaurants', requireAuth, async (req, res) => {
     res.json(await getRestaurantWorkspacesPayload(req.auth))
   } catch (error) {
     handleError(res, error, 'Failed to load restaurants')
+  }
+})
+
+app.post('/api/restaurants', requireAuth, async (req, res) => {
+  try {
+    if (isBrainUser(req.auth)) {
+      return res.status(403).json({ error: 'Use the Bastida Systems add restaurant panel for brain workspaces' })
+    }
+
+    if (!String(req.body.businessName || '').trim()) {
+      throw badRequest('Business or location name is required')
+    }
+
+    const session = await createRestaurantWorkspaceForAccount({
+      businessName: req.body.businessName,
+      fullName: req.auth.name || req.auth.email,
+      email: req.auth.email,
+      password: '',
+      businessType: req.body.businessType,
+      role: 'admin',
+      logoDataUrl: req.body.logoDataUrl,
+      identityLabel: req.body.identityLabel || req.body.businessType
+    })
+    const payload = await getRestaurantWorkspacesPayload(req.auth)
+    const user = payload.users.find(item => String(item.tenantId) === String(session.user.tenantId)) || session.user
+
+    res.status(201).json({
+      ok: true,
+      user,
+      totals: payload.totals,
+      users: payload.users
+    })
+  } catch (error) {
+    handleError(res, error, 'Failed to create restaurant')
   }
 })
 

@@ -56,6 +56,7 @@ let adminUsers = [];
 let restaurantWorkspaces = [];
 let adminUserTotals = {};
 let restaurantLogoDataUrl = '';
+let clientWorkspaceLogoDataUrl = '';
 let machineAccess = {
   tier: 'standard',
   unlimited: false,
@@ -521,15 +522,24 @@ function renderRestaurantSelector() {
   const isBrain = isBrainUser();
   const workspaces = getRestaurantWorkspaces();
   const primaryWorkspace = workspaces[0] || null;
+  const clientAccountLabel = primaryWorkspace?.identityLabel
+    || currentUser?.name
+    || currentUser?.tenantName
+    || 'Client account';
 
   restaurantScreen?.classList.toggle('client-picker', Boolean(authToken && !isBrain));
   if (restaurantForm) restaurantForm.hidden = Boolean(authToken && !isBrain);
   if (refreshRestaurantsBtn) refreshRestaurantsBtn.hidden = Boolean(authToken && !isBrain);
+  if (clientAddWorkspaceButton) {
+    clientAddWorkspaceButton.hidden = !authToken || isBrain;
+    clientAddWorkspaceButton.title = `Add a workspace to ${clientAccountLabel}`;
+    clientAddWorkspaceButton.setAttribute('aria-label', `Add a workspace to ${clientAccountLabel}`);
+  }
 
   if (restaurantContextLabel) {
     restaurantContextLabel.textContent = isBrain
       ? 'Bastida Systems Cerebro'
-      : `${primaryWorkspace?.identityLabel || currentUser?.tenantName || currentUser?.name || 'Workspace'}${primaryWorkspace?.businessName ? ` - ${primaryWorkspace.businessName}` : ''}`.toUpperCase();
+      : `${clientAccountLabel} account`.toUpperCase();
   }
 
   if (restaurantTitle) {
@@ -539,7 +549,7 @@ function renderRestaurantSelector() {
   if (restaurantSubtitle) {
     restaurantSubtitle.textContent = isBrain
       ? 'Select the business workspace you want to operate. Each restaurant opens with its own machines, filters, inventory, maintenance history, and reports.'
-      : 'Select the operation you want to run. FiltraCore will open the correct workspace after you choose one.';
+      : `Select the restaurant, business, or location under ${clientAccountLabel}. FiltraCore opens the correct workspace after you choose one.`;
   }
 
   restaurantList.innerHTML = '';
@@ -600,7 +610,7 @@ function renderRestaurantSelector() {
       `
       : `
         <div class="restaurant-card-main">
-          <span class="restaurant-card-logo logo-fallback">${escapeHTML(String(index + 1).padStart(2, '0'))}</span>
+          ${getLogoMarkup(user)}
           <div>
             <h3>${escapeHTML(user.businessName || currentUser?.tenantName || 'Restaurant')}</h3>
             <p>${escapeHTML(user.identityLabel || 'Restaurant')} · ${index === 0 ? 'Primary workspace' : 'Workspace'}</p>
@@ -655,6 +665,126 @@ function loadRestaurantLogoFile(file) {
     setRestaurantStatus('Unable to read that logo file.', 'error');
   };
   reader.readAsDataURL(file);
+}
+
+function setClientWorkspaceStatus(message, tone = '') {
+  if (!clientWorkspaceStatus) return;
+
+  clientWorkspaceStatus.textContent = message;
+  clientWorkspaceStatus.dataset.tone = tone;
+}
+
+function renderClientWorkspaceLogoPreview() {
+  if (!clientWorkspaceLogoPreview) return;
+
+  clientWorkspaceLogoPreview.hidden = false;
+  clientWorkspaceLogoPreview.innerHTML = clientWorkspaceLogoDataUrl
+    ? `<img src="${escapeHTML(clientWorkspaceLogoDataUrl)}" alt="Selected workspace logo" /><span>Logo selected</span>`
+    : '<span>No logo selected</span>';
+}
+
+function clearClientWorkspaceLogo() {
+  clientWorkspaceLogoDataUrl = '';
+  if (clientWorkspaceLogoInput) clientWorkspaceLogoInput.value = '';
+  renderClientWorkspaceLogoPreview();
+}
+
+function loadClientWorkspaceLogoFile(file) {
+  if (!file) {
+    clearClientWorkspaceLogo();
+    return;
+  }
+
+  if (!['image/png', 'image/jpeg'].includes(file.type)) {
+    clearClientWorkspaceLogo();
+    setClientWorkspaceStatus('Logo must be a PNG or JPG image.', 'error');
+    return;
+  }
+
+  if (file.size > 800 * 1024) {
+    clearClientWorkspaceLogo();
+    setClientWorkspaceStatus('Logo image must be under 800 KB.', 'error');
+    return;
+  }
+
+  const reader = new FileReader();
+  reader.onload = () => {
+    clientWorkspaceLogoDataUrl = String(reader.result || '');
+    renderClientWorkspaceLogoPreview();
+    setClientWorkspaceStatus('Logo ready.', 'success');
+  };
+  reader.onerror = () => {
+    clearClientWorkspaceLogo();
+    setClientWorkspaceStatus('Unable to read that logo file.', 'error');
+  };
+  reader.readAsDataURL(file);
+}
+
+function openClientWorkspaceModal() {
+  if (!authToken || isBrainUser() || !clientWorkspaceModal) return;
+
+  clientWorkspaceModal.hidden = false;
+  clientWorkspaceModal.classList.add('is-open');
+  setClientWorkspaceStatus('');
+  if (clientWorkspaceBusinessTypeInput) clientWorkspaceBusinessTypeInput.value = 'Restaurant';
+  if (clientWorkspaceIdentityLabelInput && !clientWorkspaceIdentityLabelInput.value) {
+    clientWorkspaceIdentityLabelInput.value = getRestaurantWorkspaces()[0]?.identityLabel || '';
+  }
+  renderClientWorkspaceLogoPreview();
+  clientWorkspaceBusinessNameInput?.focus();
+}
+
+function closeClientWorkspaceModal() {
+  if (!clientWorkspaceModal) return;
+
+  clientWorkspaceModal.classList.remove('is-open');
+  clientWorkspaceModal.hidden = true;
+  setClientWorkspaceStatus('');
+}
+
+async function createClientWorkspace() {
+  if (!clientWorkspaceForm || !authToken || isBrainUser()) return;
+
+  const payload = {
+    businessName: clientWorkspaceBusinessNameInput?.value.trim() || '',
+    businessType: clientWorkspaceBusinessTypeInput?.value || 'Restaurant',
+    identityLabel: clientWorkspaceIdentityLabelInput?.value.trim() || getRestaurantWorkspaces()[0]?.identityLabel || '',
+    logoDataUrl: clientWorkspaceLogoDataUrl
+  };
+
+  if (!payload.businessName) {
+    setClientWorkspaceStatus('Business or location name is required.', 'error');
+    clientWorkspaceBusinessNameInput?.focus();
+    return;
+  }
+
+  setClientWorkspaceStatus('Creating workspace...');
+  setFormBusy(clientWorkspaceForm, true);
+  if (clientWorkspaceSubmitButton) clientWorkspaceSubmitButton.textContent = 'Creating...';
+
+  try {
+    const response = await apiRequest('/api/restaurants', {
+      method: 'POST',
+      body: JSON.stringify(payload)
+    });
+
+    restaurantWorkspaces = Array.isArray(response.users) ? response.users : restaurantWorkspaces;
+    clientWorkspaceForm.reset();
+    clearClientWorkspaceLogo();
+    renderRestaurantSelector();
+    closeClientWorkspaceModal();
+    if (response.user?.tenantId) {
+      await openRestaurant(response.user.tenantId);
+    } else {
+      updateAuthUI();
+    }
+  } catch (error) {
+    console.error(error);
+    setClientWorkspaceStatus(error.message || 'Unable to create workspace.', 'error');
+  } finally {
+    setFormBusy(clientWorkspaceForm, false);
+    if (clientWorkspaceSubmitButton) clientWorkspaceSubmitButton.textContent = 'Create Workspace';
+  }
 }
 
 async function openRestaurant(tenantId) {
@@ -862,6 +992,17 @@ const restaurantPasswordInput = document.querySelector('#restaurant-password');
 const restaurantBusinessTypeInput = document.querySelector('#restaurant-business-type');
 const restaurantSubmitButton = document.querySelector('#restaurant-submit');
 const restaurantStatus = document.querySelector('#restaurant-status');
+const clientAddWorkspaceButton = document.querySelector('#client-add-workspace-button');
+const clientWorkspaceModal = document.querySelector('#client-workspace-modal');
+const clientWorkspaceForm = document.querySelector('#client-workspace-form');
+const clientWorkspaceCloseButton = document.querySelector('#client-workspace-close');
+const clientWorkspaceBusinessNameInput = document.querySelector('#client-workspace-business-name');
+const clientWorkspaceBusinessTypeInput = document.querySelector('#client-workspace-business-type');
+const clientWorkspaceIdentityLabelInput = document.querySelector('#client-workspace-identity-label');
+const clientWorkspaceLogoInput = document.querySelector('#client-workspace-logo');
+const clientWorkspaceLogoPreview = document.querySelector('#client-workspace-logo-preview');
+const clientWorkspaceSubmitButton = document.querySelector('#client-workspace-submit');
+const clientWorkspaceStatus = document.querySelector('#client-workspace-status');
 const machineForm = document.querySelector('#machine-form');
 const machinesList = document.querySelector('#machines-list');
 const machineSearchInput = document.querySelector('#machine-search');
@@ -3721,6 +3862,26 @@ if (restaurantLogoutButton) {
   });
 }
 
+if (clientAddWorkspaceButton) {
+  clientAddWorkspaceButton.addEventListener('click', () => {
+    openClientWorkspaceModal();
+  });
+}
+
+if (clientWorkspaceCloseButton) {
+  clientWorkspaceCloseButton.addEventListener('click', () => {
+    closeClientWorkspaceModal();
+  });
+}
+
+if (clientWorkspaceModal) {
+  clientWorkspaceModal.addEventListener('click', (e) => {
+    if (e.target === clientWorkspaceModal) {
+      closeClientWorkspaceModal();
+    }
+  });
+}
+
 if (switchRestaurantButton) {
   switchRestaurantButton.addEventListener('click', async () => {
     clearSelectedRestaurant();
@@ -3757,10 +3918,23 @@ if (restaurantLogoInput) {
   });
 }
 
+if (clientWorkspaceLogoInput) {
+  clientWorkspaceLogoInput.addEventListener('change', () => {
+    loadClientWorkspaceLogoFile(clientWorkspaceLogoInput.files?.[0] || null);
+  });
+}
+
 if (restaurantForm) {
   restaurantForm.addEventListener('submit', async (e) => {
     e.preventDefault();
     await createRestaurantAccount();
+  });
+}
+
+if (clientWorkspaceForm) {
+  clientWorkspaceForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    await createClientWorkspace();
   });
 }
 
