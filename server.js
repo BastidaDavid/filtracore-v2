@@ -90,6 +90,12 @@ function normalizeLoginIdentifier(value) {
   return normalizeEmail(value)
 }
 
+function normalizeSeedLogin(value) {
+  const login = normalizeLoginIdentifier(value)
+  if (login === 'armand01' || login === 'armando01') return 'strat01'
+  return login
+}
+
 function isValidEmail(email) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(email || '').trim())
 }
@@ -398,14 +404,15 @@ async function ensureSchema() {
   `)
 
   await seedAdminUser(defaultTenantId)
+  await migrateLegacyStratLogin()
   await seedDemoUser()
   await seedBrainUser()
 }
 
 async function seedAdminUser(defaultTenantId) {
-  const email = normalizeLoginIdentifier(process.env.FILTRACORE_ADMIN_USERNAME || process.env.FILTRACORE_ADMIN_EMAIL)
+  const email = normalizeSeedLogin(process.env.FILTRACORE_ADMIN_USERNAME || process.env.FILTRACORE_ADMIN_EMAIL)
   const password = process.env.FILTRACORE_ADMIN_PASSWORD
-  const name = process.env.FILTRACORE_ADMIN_NAME || 'FiltraCore Admin'
+  const name = process.env.FILTRACORE_ADMIN_NAME || (email === 'strat01' ? 'Strat01' : 'FiltraCore Admin')
 
   if (!email || !password) {
     console.warn('FILTRACORE_ADMIN_USERNAME or FILTRACORE_ADMIN_EMAIL plus FILTRACORE_ADMIN_PASSWORD are not set. No admin user was seeded.')
@@ -437,6 +444,39 @@ async function seedAdminUser(defaultTenantId) {
       [hashPassword(password), name, defaultTenantId, email]
     )
   }
+}
+
+async function migrateLegacyStratLogin() {
+  const target = await pool.query(
+    'SELECT user_id, tenant_id FROM users WHERE LOWER(email) = $1 LIMIT 1',
+    ['strat01']
+  )
+  const legacy = await pool.query(
+    `
+    SELECT user_id, tenant_id
+    FROM users
+    WHERE LOWER(email) IN ('armand01', 'armando01')
+    ORDER BY created_at ASC
+    `
+  )
+
+  if (target.rowCount > 0) {
+    for (const user of legacy.rows) {
+      await pool.query('DELETE FROM sessions WHERE user_id = $1', [user.user_id])
+      await pool.query('DELETE FROM users WHERE user_id = $1', [user.user_id])
+    }
+    await pool.query('UPDATE tenants SET name = $1 WHERE tenant_id = $2', ['Strat01', Number(target.rows[0].tenant_id)])
+    return
+  }
+
+  if (legacy.rowCount === 0) return
+
+  const user = legacy.rows[0]
+  await pool.query(
+    'UPDATE users SET email = $1, name = $2 WHERE user_id = $3',
+    ['strat01', 'Strat01', user.user_id]
+  )
+  await pool.query('UPDATE tenants SET name = $1 WHERE tenant_id = $2', ['Strat01', Number(user.tenant_id)])
 }
 
 async function ensureUniqueTenantSlug(db, businessName) {
