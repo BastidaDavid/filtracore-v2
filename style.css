@@ -43,6 +43,10 @@ body.restaurant-required .app-layout {
   gap: 22px;
 }
 
+.restaurant-screen.client-picker .restaurant-shell {
+  width: min(760px, 100%);
+}
+
 .restaurant-heading {
   position: relative;
   display: grid;
@@ -127,6 +131,31 @@ body.restaurant-required .app-layout {
   grid-template-columns: minmax(0, 1.35fr) minmax(330px, 0.75fr);
   gap: 20px;
   align-items: start;
+}
+
+.restaurant-screen.client-picker .restaurant-layout {
+  grid-template-columns: 1fr;
+}
+
+.restaurant-screen.client-picker .restaurant-summary-grid,
+.restaurant-screen.client-picker .restaurant-form,
+.restaurant-form[hidden] {
+  display: none;
+}
+
+.restaurant-screen.client-picker .restaurant-panel {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.restaurant-screen.client-picker .report-card-header {
+  display: none;
+}
+
+.restaurant-screen.client-picker .restaurant-list {
+  grid-template-columns: 1fr;
 }
 
 .restaurant-panel {
@@ -287,6 +316,33 @@ button.restaurant-card:not(.kpi-card):not(.module-kpi-card):not(.clickable-kpi):
   background: #dcfce7;
   color: #166534;
   font-size: 12px;
+}
+
+.client-workspace-card,
+button.client-workspace-card:not(.kpi-card):not(.module-kpi-card):not(.clickable-kpi) {
+  min-height: 148px;
+  padding: 26px;
+  border-radius: 22px;
+  background: #f8fafc;
+}
+
+.client-workspace-card .restaurant-card-main {
+  align-items: center;
+}
+
+.client-workspace-card .restaurant-card-logo {
+  color: #ffffff;
+  background: #0f172a;
+}
+
+.client-workspace-card h3 {
+  font-size: 25px;
+}
+
+.client-workspace-card p {
+  margin-top: 22px;
+  font-size: 17px;
+  font-weight: 900;
 }
 
 .restaurant-form {

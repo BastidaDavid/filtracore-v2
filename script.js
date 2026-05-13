@@ -53,6 +53,7 @@ let currentUser = loadStoredObject(authUserKey, null);
 let selectedTenantId = localStorage.getItem(selectedTenantKey) || '';
 let apiAvailable = false;
 let adminUsers = [];
+let restaurantWorkspaces = [];
 let adminUserTotals = {};
 let restaurantLogoDataUrl = '';
 let machineAccess = {
@@ -70,12 +71,16 @@ function isBrainUser() {
     || String(currentUser?.role || '').trim().toLowerCase() === 'superadmin';
 }
 
+function getRestaurantWorkspaces() {
+  return isBrainUser() ? adminUsers : restaurantWorkspaces;
+}
+
 function getSelectedRestaurant() {
-  return adminUsers.find(user => String(user.tenantId) === String(selectedTenantId)) || null;
+  return getRestaurantWorkspaces().find(user => String(user.tenantId) === String(selectedTenantId)) || null;
 }
 
 function needsRestaurantSelection() {
-  return Boolean(authToken && isBrainUser() && !getSelectedRestaurant());
+  return Boolean(authToken && !getSelectedRestaurant());
 }
 
 function getRestaurantInitials(user) {
@@ -281,7 +286,7 @@ function updateAuthUI() {
   }
 
   if (switchRestaurantButton) {
-    switchRestaurantButton.hidden = !isSignedIn || !isBrainUser();
+    switchRestaurantButton.hidden = !isSignedIn || !getSelectedRestaurant();
   }
 }
 
@@ -323,6 +328,7 @@ function clearAuthSession() {
   currentUser = null;
   apiAvailable = false;
   adminUsers = [];
+  restaurantWorkspaces = [];
   adminUserTotals = {};
   selectedTenantId = '';
   localStorage.removeItem(authTokenKey);
@@ -378,17 +384,13 @@ async function signIn(email, password) {
   });
 
   setAuthSession(session);
-  if (isBrainUser()) {
-    await loadAdminUsers();
-    if (getSelectedRestaurant()) {
-      await loadServerData();
-    } else {
-      clearLocalOperationalData();
-      updateAuthUI();
-    }
-  } else {
-    clearSelectedRestaurant();
+  clearSelectedRestaurant();
+  await loadRestaurantWorkspaces();
+  if (getSelectedRestaurant()) {
     await loadServerData();
+  } else {
+    clearLocalOperationalData();
+    updateAuthUI();
   }
   renderApp();
 }
@@ -402,7 +404,9 @@ async function signUpPublicAccount(payload) {
 
   setAuthSession(session);
   clearSelectedRestaurant();
-  await loadServerData();
+  await loadRestaurantWorkspaces();
+  clearLocalOperationalData();
+  updateAuthUI();
   renderApp();
 }
 
@@ -514,22 +518,46 @@ function validateSelectedRestaurant() {
 function renderRestaurantSelector() {
   if (!restaurantList) return;
 
+  const isBrain = isBrainUser();
+  const workspaces = getRestaurantWorkspaces();
+  const primaryWorkspace = workspaces[0] || null;
+
+  restaurantScreen?.classList.toggle('client-picker', Boolean(authToken && !isBrain));
+  if (restaurantForm) restaurantForm.hidden = Boolean(authToken && !isBrain);
+  if (refreshRestaurantsBtn) refreshRestaurantsBtn.hidden = Boolean(authToken && !isBrain);
+
+  if (restaurantContextLabel) {
+    restaurantContextLabel.textContent = isBrain
+      ? 'Bastida Systems Cerebro'
+      : `${primaryWorkspace?.identityLabel || currentUser?.tenantName || currentUser?.name || 'Workspace'}${primaryWorkspace?.businessName ? ` - ${primaryWorkspace.businessName}` : ''}`.toUpperCase();
+  }
+
+  if (restaurantTitle) {
+    restaurantTitle.textContent = isBrain ? 'Choose Restaurant' : 'Choose a restaurant';
+  }
+
+  if (restaurantSubtitle) {
+    restaurantSubtitle.textContent = isBrain
+      ? 'Select the business workspace you want to operate. Each restaurant opens with its own machines, filters, inventory, maintenance history, and reports.'
+      : 'Select the operation you want to run. FiltraCore will open the correct workspace after you choose one.';
+  }
+
   restaurantList.innerHTML = '';
   if (restaurantTotalWorkspaces) restaurantTotalWorkspaces.textContent = '0';
   if (restaurantTotalMachines) restaurantTotalMachines.textContent = '0';
   if (restaurantTotalFilters) restaurantTotalFilters.textContent = '0';
 
-  if (!isBrainUser()) {
-    restaurantList.innerHTML = '<p class="empty-state">Sign in with Bastida Systems to choose a restaurant.</p>';
+  if (!authToken) {
+    restaurantList.innerHTML = '<p class="empty-state">Sign in to choose a restaurant.</p>';
     return;
   }
 
-  if (!adminUsers.length) {
+  if (!workspaces.length) {
     restaurantList.innerHTML = '<p class="empty-state">No restaurants loaded yet.</p>';
     return;
   }
 
-  const totals = adminUsers.reduce((summary, user) => ({
+  const totals = workspaces.reduce((summary, user) => ({
     workspaces: summary.workspaces + 1,
     machines: summary.machines + (Number(user.machines) || 0),
     filters: summary.filters + (Number(user.filters) || 0)
@@ -539,10 +567,10 @@ function renderRestaurantSelector() {
   if (restaurantTotalMachines) restaurantTotalMachines.textContent = totals.machines;
   if (restaurantTotalFilters) restaurantTotalFilters.textContent = totals.filters;
 
-  adminUsers.forEach(user => {
+  workspaces.forEach((user, index) => {
     const button = document.createElement('button');
     button.type = 'button';
-    button.className = 'restaurant-card';
+    button.className = `restaurant-card${isBrain ? '' : ' client-workspace-card'}`;
     button.dataset.tenantId = user.tenantId;
     const isCurrent = String(user.tenantId) === String(selectedTenantId);
     const label = user.identityLabel || user.role || 'Workspace';
@@ -550,25 +578,35 @@ function renderRestaurantSelector() {
       ? new Date(user.lastSessionAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
       : 'No recent session';
 
-    button.innerHTML = `
-      <div class="restaurant-card-main">
-        ${getLogoMarkup(user)}
-        <div>
-          <span class="restaurant-card-kicker">${escapeHTML(label)}</span>
-          <h3>${escapeHTML(user.businessName || 'Restaurant')}</h3>
-          <p>${escapeHTML(user.fullName || 'Admin')} · ${escapeHTML(user.email || '')}</p>
+    button.innerHTML = isBrain
+      ? `
+        <div class="restaurant-card-main">
+          ${getLogoMarkup(user)}
+          <div>
+            <span class="restaurant-card-kicker">${escapeHTML(label)}</span>
+            <h3>${escapeHTML(user.businessName || 'Restaurant')}</h3>
+            <p>${escapeHTML(user.fullName || 'Admin')} · ${escapeHTML(user.email || '')}</p>
+          </div>
         </div>
-      </div>
-      <div class="restaurant-card-metrics" aria-label="Workspace metrics">
-        <div><strong>${Number(user.machines) || 0}</strong><span>Machines</span></div>
-        <div><strong>${Number(user.filters) || 0}</strong><span>Filters</span></div>
-        <div><strong>${Number(user.maintenanceRecords) || 0}</strong><span>Service</span></div>
-      </div>
-      <div class="restaurant-card-footer">
-        <span>Last activity: ${escapeHTML(lastActivity)}</span>
-        <strong>${isCurrent ? 'Current' : 'Open'}</strong>
-      </div>
-    `;
+        <div class="restaurant-card-metrics" aria-label="Workspace metrics">
+          <div><strong>${Number(user.machines) || 0}</strong><span>Machines</span></div>
+          <div><strong>${Number(user.filters) || 0}</strong><span>Filters</span></div>
+          <div><strong>${Number(user.maintenanceRecords) || 0}</strong><span>Service</span></div>
+        </div>
+        <div class="restaurant-card-footer">
+          <span>Last activity: ${escapeHTML(lastActivity)}</span>
+          <strong>${isCurrent ? 'Current' : 'Open'}</strong>
+        </div>
+      `
+      : `
+        <div class="restaurant-card-main">
+          <span class="restaurant-card-logo logo-fallback">${escapeHTML(String(index + 1).padStart(2, '0'))}</span>
+          <div>
+            <h3>${escapeHTML(user.businessName || currentUser?.tenantName || 'Restaurant')}</h3>
+            <p>${escapeHTML(user.identityLabel || 'Restaurant')} · ${index === 0 ? 'Primary workspace' : 'Workspace'}</p>
+          </div>
+        </div>
+      `;
     restaurantList.appendChild(button);
   });
 }
@@ -630,32 +668,51 @@ async function openRestaurant(tenantId) {
   setActiveNavById('dashboard');
 }
 
-async function loadAdminUsers() {
-  if (!isBrainUser()) {
+async function loadRestaurantWorkspaces() {
+  if (!authToken) {
     adminUsers = [];
+    restaurantWorkspaces = [];
     adminUserTotals = {};
     renderAdminUsers();
     renderRestaurantSelector();
     return;
   }
 
-  setAccountsStatus('Loading account registrations...');
+  if (isBrainUser()) {
+    setAccountsStatus('Loading account registrations...');
+  }
 
   try {
-    const payload = await apiRequest('/api/admin/users');
-    adminUsers = Array.isArray(payload.users) ? payload.users : [];
-    adminUserTotals = payload.totals || {};
+    const payload = await apiRequest('/api/restaurants');
+    const users = Array.isArray(payload.users) ? payload.users : [];
+
+    if (isBrainUser()) {
+      adminUsers = users;
+      restaurantWorkspaces = [];
+      adminUserTotals = payload.totals || {};
+      setAccountsStatus(adminUsers.length ? 'Accounts synced from Render.' : 'No accounts yet.', 'success');
+    } else {
+      restaurantWorkspaces = users;
+      adminUsers = [];
+      adminUserTotals = {};
+    }
+
     validateSelectedRestaurant();
     renderAdminUsers();
     renderRestaurantSelector();
     updateAuthUI();
-    setAccountsStatus(adminUsers.length ? 'Accounts synced from Render.' : 'No accounts yet.', 'success');
   } catch (error) {
     console.error(error);
-    setAccountsStatus(error.message || 'Unable to load accounts.', 'error');
+    if (isBrainUser()) {
+      setAccountsStatus(error.message || 'Unable to load accounts.', 'error');
+    }
     renderRestaurantSelector();
     updateAuthUI();
   }
+}
+
+async function loadAdminUsers() {
+  return loadRestaurantWorkspaces();
 }
 
 async function createRestaurantAccount() {
@@ -802,6 +859,9 @@ const switchRestaurantButton = document.querySelector('#switch-restaurant-button
 const restaurantScreen = document.querySelector('#restaurant-screen');
 const restaurantList = document.querySelector('#restaurant-list');
 const refreshRestaurantsBtn = document.querySelector('#refresh-restaurants');
+const restaurantContextLabel = document.querySelector('#restaurant-context-label');
+const restaurantTitle = document.querySelector('#restaurant-title');
+const restaurantSubtitle = document.querySelector('#restaurant-subtitle');
 const restaurantTotalWorkspaces = document.querySelector('#restaurant-total-workspaces');
 const restaurantTotalMachines = document.querySelector('#restaurant-total-machines');
 const restaurantTotalFilters = document.querySelector('#restaurant-total-filters');
@@ -4287,13 +4347,12 @@ async function initializeApp() {
   updateAuthUI();
 
   if (authToken) {
-    await loadAdminUsers();
-    if (isBrainUser()) {
-      if (getSelectedRestaurant()) {
-        await loadServerData();
-      }
-    } else {
+    await loadRestaurantWorkspaces();
+    if (getSelectedRestaurant()) {
       await loadServerData();
+    } else {
+      clearLocalOperationalData();
+      updateAuthUI();
     }
   }
 

@@ -339,6 +339,14 @@ async function ensureSchema() {
       last_used_at TIMESTAMP
     );
 
+    CREATE TABLE IF NOT EXISTS user_tenant_access (
+      user_id INTEGER REFERENCES users(user_id) ON DELETE CASCADE,
+      tenant_id INTEGER REFERENCES tenants(tenant_id) ON DELETE CASCADE,
+      role TEXT DEFAULT 'admin',
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (user_id, tenant_id)
+    );
+
     CREATE TABLE IF NOT EXISTS machines (
       machine_id SERIAL PRIMARY KEY,
       tenant_id INTEGER REFERENCES tenants(tenant_id) ON DELETE CASCADE,
@@ -407,6 +415,7 @@ async function ensureSchema() {
 
     CREATE INDEX IF NOT EXISTS sessions_token_hash_idx ON sessions(token_hash);
     CREATE INDEX IF NOT EXISTS sessions_user_id_idx ON sessions(user_id);
+    CREATE INDEX IF NOT EXISTS user_tenant_access_tenant_id_idx ON user_tenant_access(tenant_id);
     CREATE INDEX IF NOT EXISTS machines_tenant_id_idx ON machines(tenant_id);
     CREATE INDEX IF NOT EXISTS inventory_tenant_id_idx ON inventory(tenant_id);
     CREATE INDEX IF NOT EXISTS filters_tenant_id_idx ON filters(tenant_id);
@@ -453,6 +462,13 @@ async function ensureSchema() {
     ALTER TABLE inventory ALTER COLUMN tenant_id SET NOT NULL;
     ALTER TABLE filters ALTER COLUMN tenant_id SET NOT NULL;
     ALTER TABLE maintenance ALTER COLUMN tenant_id SET NOT NULL;
+  `)
+
+  await pool.query(`
+    INSERT INTO user_tenant_access (user_id, tenant_id, role)
+    SELECT user_id, tenant_id, role
+    FROM users
+    ON CONFLICT (user_id, tenant_id) DO NOTHING
   `)
 
   await migrateLegacyStratLogin()
@@ -700,6 +716,15 @@ async function createPublicAccount({
       [tenantId, cleanEmail, cleanFullName, hashPassword(cleanPassword), role]
     )
 
+    await client.query(
+      `
+      INSERT INTO user_tenant_access (user_id, tenant_id, role)
+      VALUES ($1, $2, $3)
+      ON CONFLICT (user_id, tenant_id) DO NOTHING
+      `,
+      [userResult.rows[0].user_id, tenantId, role]
+    )
+
     await seedSampleTenantData(client, tenantId, cleanBusinessName)
     await client.query('COMMIT')
 
@@ -721,6 +746,100 @@ async function createPublicAccount({
       throw badRequest('An account already exists for this email')
     }
 
+    throw error
+  } finally {
+    client.release()
+  }
+}
+
+async function createRestaurantWorkspaceForAccount({
+  businessName,
+  fullName,
+  email,
+  password,
+  businessType,
+  role = 'admin',
+  logoDataUrl,
+  identityLabel
+}) {
+  const cleanEmail = normalizeLoginIdentifier(email)
+  const cleanBusinessName = String(businessName || '').trim()
+  const cleanFullName = String(fullName || '').trim()
+  const cleanPassword = String(password || '')
+  const cleanLogoDataUrl = normalizeLogoDataUrl(logoDataUrl)
+  const cleanIdentityLabel = normalizeIdentityLabel(identityLabel)
+
+  if (!cleanBusinessName || !cleanFullName || !cleanEmail || !isValidEmail(cleanEmail)) {
+    throw badRequest('Business name, owner name, and a valid account email are required')
+  }
+
+  const existing = await pool.query(
+    'SELECT user_id, email, name, role FROM users WHERE LOWER(email) = $1 LIMIT 1',
+    [cleanEmail]
+  )
+
+  if (existing.rowCount === 0) {
+    return createPublicAccount({
+      businessName: cleanBusinessName,
+      fullName: cleanFullName,
+      email: cleanEmail,
+      password: cleanPassword,
+      businessType,
+      role,
+      allowUsername: false,
+      minimumPasswordLength: 6,
+      createSessionToken: false,
+      logoDataUrl: cleanLogoDataUrl,
+      identityLabel: cleanIdentityLabel
+    })
+  }
+
+  const client = await pool.connect()
+
+  try {
+    await client.query('BEGIN')
+
+    const slug = await ensureUniqueTenantSlug(client, cleanBusinessName)
+    const tenantResult = await client.query(
+      `
+      INSERT INTO tenants (name, slug, logo_data_url, identity_label)
+      VALUES ($1, $2, $3, $4)
+      RETURNING tenant_id, name AS tenant_name
+      `,
+      [cleanBusinessName, slug, cleanLogoDataUrl || null, cleanIdentityLabel || null]
+    )
+    const tenantId = Number(tenantResult.rows[0].tenant_id)
+    const user = existing.rows[0]
+
+    await client.query(
+      'UPDATE users SET name = $1 WHERE user_id = $2',
+      [cleanFullName, user.user_id]
+    )
+    await client.query(
+      `
+      INSERT INTO user_tenant_access (user_id, tenant_id, role)
+      VALUES ($1, $2, $3)
+      ON CONFLICT (user_id, tenant_id) DO UPDATE SET role = EXCLUDED.role
+      `,
+      [user.user_id, tenantId, role]
+    )
+    await seedSampleTenantData(client, tenantId, cleanBusinessName)
+    await client.query('COMMIT')
+
+    return {
+      token: '',
+      existingUser: true,
+      user: mapAuthUser({
+        user_id: user.user_id,
+        tenant_id: tenantId,
+        email: user.email,
+        name: cleanFullName,
+        role,
+        tenant_name: tenantResult.rows[0].tenant_name
+      })
+    }
+  } catch (error) {
+    await client.query('ROLLBACK')
     throw error
   } finally {
     client.release()
@@ -823,6 +942,14 @@ async function upsertFiltraCoreAccount(accountInput, { resetPassword = false, ca
   await pool.query(
     'UPDATE tenants SET name = $1, identity_label = COALESCE(NULLIF($2, \'\'), identity_label) WHERE tenant_id = $3',
     [businessName, identityLabel, Number(user.tenant_id)]
+  )
+  await pool.query(
+    `
+    INSERT INTO user_tenant_access (user_id, tenant_id, role)
+    VALUES ($1, $2, $3)
+    ON CONFLICT (user_id, tenant_id) DO UPDATE SET role = EXCLUDED.role
+    `,
+    [user.user_id, Number(user.tenant_id), role]
   )
   await seedSampleTenantData(pool, Number(user.tenant_id), businessName)
 
@@ -1027,7 +1154,13 @@ async function getState(auth, db = pool) {
 async function getMachineAccess(db, tenantId) {
   const machineResult = await db.query('SELECT COUNT(*)::int AS count FROM machines WHERE tenant_id = $1', [tenantId])
   const ownerResult = await db.query(
-    'SELECT email FROM users WHERE tenant_id = $1 ORDER BY role = $2 DESC, created_at ASC',
+    `
+    SELECT users.email
+    FROM user_tenant_access
+    INNER JOIN users ON users.user_id = user_tenant_access.user_id
+    WHERE user_tenant_access.tenant_id = $1
+    ORDER BY user_tenant_access.role = $2 DESC, user_tenant_access.created_at ASC
+    `,
     [tenantId, 'admin']
   )
   const machineCount = toNumber(machineResult.rows[0]?.count)
@@ -1139,11 +1272,23 @@ async function requireAuth(req, res, next) {
     req.auth = mapAuthUser(result.rows[0])
 
     const requestedTenantId = toNumber(req.get('x-filtracore-tenant-id'), 0)
-    if (requestedTenantId && isBrainUser(req.auth)) {
-      const tenantResult = await pool.query(
-        'SELECT tenant_id, name FROM tenants WHERE tenant_id = $1 LIMIT 1',
-        [requestedTenantId]
-      )
+    if (requestedTenantId) {
+      const tenantResult = isBrainUser(req.auth)
+        ? await pool.query(
+          'SELECT tenant_id, name FROM tenants WHERE tenant_id = $1 LIMIT 1',
+          [requestedTenantId]
+        )
+        : await pool.query(
+          `
+          SELECT tenants.tenant_id, tenants.name
+          FROM user_tenant_access
+          INNER JOIN tenants ON tenants.tenant_id = user_tenant_access.tenant_id
+          WHERE user_tenant_access.user_id = $1
+            AND user_tenant_access.tenant_id = $2
+          LIMIT 1
+          `,
+          [req.auth.id, requestedTenantId]
+        )
 
       if (tenantResult.rowCount === 0) {
         throw badRequest('Selected restaurant was not found')
@@ -1304,15 +1449,15 @@ async function getAdminUsersPayload() {
     `
     SELECT
       users.user_id,
-      users.tenant_id,
+      user_tenant_access.tenant_id,
       users.email,
       users.name,
-        users.role,
-        users.created_at,
-        tenants.name AS tenant_name,
-        tenants.logo_data_url,
-        tenants.identity_label,
-        (
+      user_tenant_access.role,
+      user_tenant_access.created_at,
+      tenants.name AS tenant_name,
+      tenants.logo_data_url,
+      tenants.identity_label,
+      (
         SELECT COUNT(*)::int
         FROM machines
         WHERE machines.tenant_id = tenants.tenant_id
@@ -1337,9 +1482,10 @@ async function getAdminUsersPayload() {
         FROM sessions
         WHERE sessions.user_id = users.user_id
       ) AS last_session_at
-    FROM users
-    INNER JOIN tenants ON tenants.tenant_id = users.tenant_id
-    ORDER BY users.created_at DESC
+    FROM user_tenant_access
+    INNER JOIN users ON users.user_id = user_tenant_access.user_id
+    INNER JOIN tenants ON tenants.tenant_id = user_tenant_access.tenant_id
+    ORDER BY user_tenant_access.created_at DESC, tenants.name ASC
     LIMIT 500
     `
   )
@@ -1357,6 +1503,79 @@ async function getAdminUsersPayload() {
     users
   }
 }
+
+async function getRestaurantWorkspacesPayload(auth) {
+  if (isBrainUser(auth)) {
+    return getAdminUsersPayload()
+  }
+
+  const result = await pool.query(
+    `
+    SELECT
+      users.user_id,
+      user_tenant_access.tenant_id,
+      users.email,
+      users.name,
+      user_tenant_access.role,
+      user_tenant_access.created_at,
+      tenants.name AS tenant_name,
+      tenants.logo_data_url,
+      tenants.identity_label,
+      (
+        SELECT COUNT(*)::int
+        FROM machines
+        WHERE machines.tenant_id = tenants.tenant_id
+      ) AS machines_count,
+      (
+        SELECT COUNT(*)::int
+        FROM inventory
+        WHERE inventory.tenant_id = tenants.tenant_id
+      ) AS inventory_count,
+      (
+        SELECT COUNT(*)::int
+        FROM filters
+        WHERE filters.tenant_id = tenants.tenant_id
+      ) AS filters_count,
+      (
+        SELECT COUNT(*)::int
+        FROM maintenance
+        WHERE maintenance.tenant_id = tenants.tenant_id
+      ) AS maintenance_count,
+      (
+        SELECT MAX(sessions.last_used_at)
+        FROM sessions
+        WHERE sessions.user_id = users.user_id
+      ) AS last_session_at
+    FROM user_tenant_access
+    INNER JOIN users ON users.user_id = user_tenant_access.user_id
+    INNER JOIN tenants ON tenants.tenant_id = user_tenant_access.tenant_id
+    WHERE user_tenant_access.user_id = $1
+    ORDER BY user_tenant_access.created_at ASC, tenants.name ASC
+    `,
+    [auth.id]
+  )
+
+  const users = result.rows.map(mapAdminUser)
+
+  return {
+    ok: true,
+    totals: {
+      users: users.length,
+      businesses: new Set(users.map(user => user.tenantId)).size,
+      demoUsers: users.filter(user => normalizeEmail(user.email) === demoEmail).length,
+      brainUsers: 0
+    },
+    users
+  }
+}
+
+app.get('/api/restaurants', requireAuth, async (req, res) => {
+  try {
+    res.json(await getRestaurantWorkspacesPayload(req.auth))
+  } catch (error) {
+    handleError(res, error, 'Failed to load restaurants')
+  }
+})
 
 app.get('/api/admin/users', requireAuth, async (req, res) => {
   try {
@@ -1376,28 +1595,27 @@ app.post('/api/admin/users', requireAuth, async (req, res) => {
       return res.status(403).json({ error: 'Only Bastida Systems can create FiltraCore users' })
     }
 
-    const session = await createPublicAccount({
+    const session = await createRestaurantWorkspaceForAccount({
       businessName: req.body.businessName,
       fullName: req.body.fullName,
       email: req.body.email || req.body.username,
       password: req.body.password,
       businessType: req.body.businessType,
-      allowUsername: false,
-      minimumPasswordLength: 6,
-      createSessionToken: false,
       logoDataUrl: req.body.logoDataUrl,
       identityLabel: req.body.identityLabel
     })
-    await syncAccountToBeoflow({
-      businessName: req.body.businessName,
-      fullName: req.body.fullName,
-      email: req.body.email || req.body.username,
-      password: req.body.password,
-      businessType: req.body.businessType,
-      identityLabel: req.body.identityLabel
-    })
+    if (!session.existingUser) {
+      await syncAccountToBeoflow({
+        businessName: req.body.businessName,
+        fullName: req.body.fullName,
+        email: req.body.email || req.body.username,
+        password: req.body.password,
+        businessType: req.body.businessType,
+        identityLabel: req.body.identityLabel
+      })
+    }
     const payload = await getAdminUsersPayload()
-    const user = payload.users.find(item => item.id === session.user.id) || session.user
+    const user = payload.users.find(item => String(item.tenantId) === String(session.user.tenantId)) || session.user
 
     res.status(201).json({
       ok: true,
