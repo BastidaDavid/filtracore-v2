@@ -54,6 +54,7 @@ let selectedTenantId = localStorage.getItem(selectedTenantKey) || '';
 let apiAvailable = false;
 let adminUsers = [];
 let adminUserTotals = {};
+let restaurantLogoDataUrl = '';
 
 function isBrainUser() {
   return String(currentUser?.email || '').trim().toLowerCase() === brainUserEmail
@@ -66,6 +67,26 @@ function getSelectedRestaurant() {
 
 function needsRestaurantSelection() {
   return Boolean(authToken && isBrainUser() && !getSelectedRestaurant());
+}
+
+function getRestaurantInitials(user) {
+  const source = user?.businessName || user?.fullName || user?.email || 'FC';
+  return String(source)
+    .trim()
+    .split(/\s+/)
+    .slice(0, 2)
+    .map(part => part[0] || '')
+    .join('')
+    .toUpperCase() || 'FC';
+}
+
+function getLogoMarkup(user, className = 'restaurant-card-logo') {
+  const logo = String(user?.logoDataUrl || '');
+  if (/^data:image\/(png|jpe?g);base64,/i.test(logo)) {
+    return `<img class="${className}" src="${escapeHTML(logo)}" alt="${escapeHTML(user?.businessName || 'Restaurant')} logo" />`;
+  }
+
+  return `<span class="${className} logo-fallback">${escapeHTML(getRestaurantInitials(user))}</span>`;
 }
 
 function normalizeMachine(machine) {
@@ -369,10 +390,13 @@ function renderAdminUsers() {
     const row = document.createElement('article');
     row.className = 'account-row';
     row.innerHTML = `
-      <div>
-        <h3>${escapeHTML(user.businessName || 'Business')}</h3>
-        <p>${escapeHTML(user.fullName || 'Owner')}</p>
-        <strong>${escapeHTML(user.role || 'admin')}</strong>
+      <div class="account-profile">
+        ${getLogoMarkup(user, 'account-row-logo')}
+        <div>
+          <h3>${escapeHTML(user.businessName || 'Business')}</h3>
+          <p>${escapeHTML(user.identityLabel || user.fullName || 'Owner')}</p>
+          <strong>${escapeHTML(user.role || 'admin')}</strong>
+        </div>
       </div>
       <div>
         <p>${escapeHTML(user.email || '')}</p>
@@ -430,15 +454,62 @@ function renderRestaurantSelector() {
     button.className = 'restaurant-card';
     button.dataset.tenantId = user.tenantId;
     button.innerHTML = `
+      ${getLogoMarkup(user)}
       <div>
         <h3>${escapeHTML(user.businessName || 'Restaurant')}</h3>
-        <p>${escapeHTML(user.fullName || 'Admin')} · ${escapeHTML(user.email || '')}</p>
+        <p>${escapeHTML(user.identityLabel || user.fullName || 'Admin')} · ${escapeHTML(user.email || '')}</p>
         <span>${Number(user.machines) || 0} machines · ${Number(user.filters) || 0} filters · ${Number(user.maintenanceRecords) || 0} maintenance records</span>
       </div>
       <strong>${String(user.tenantId) === String(selectedTenantId) ? 'Current' : 'Open'}</strong>
     `;
     restaurantList.appendChild(button);
   });
+}
+
+function renderRestaurantLogoPreview() {
+  if (!restaurantLogoPreview) return;
+
+  restaurantLogoPreview.hidden = false;
+  restaurantLogoPreview.innerHTML = restaurantLogoDataUrl
+    ? `<img src="${escapeHTML(restaurantLogoDataUrl)}" alt="Selected restaurant logo" /><span>Logo selected</span>`
+    : '<span>No logo selected</span>';
+}
+
+function clearRestaurantLogo() {
+  restaurantLogoDataUrl = '';
+  if (restaurantLogoInput) restaurantLogoInput.value = '';
+  renderRestaurantLogoPreview();
+}
+
+function loadRestaurantLogoFile(file) {
+  if (!file) {
+    clearRestaurantLogo();
+    return;
+  }
+
+  if (!['image/png', 'image/jpeg'].includes(file.type)) {
+    clearRestaurantLogo();
+    setRestaurantStatus('Logo must be a PNG or JPG image.', 'error');
+    return;
+  }
+
+  if (file.size > 800 * 1024) {
+    clearRestaurantLogo();
+    setRestaurantStatus('Logo image must be under 800 KB.', 'error');
+    return;
+  }
+
+  const reader = new FileReader();
+  reader.onload = () => {
+    restaurantLogoDataUrl = String(reader.result || '');
+    renderRestaurantLogoPreview();
+    setRestaurantStatus('Logo ready.', 'success');
+  };
+  reader.onerror = () => {
+    clearRestaurantLogo();
+    setRestaurantStatus('Unable to read that logo file.', 'error');
+  };
+  reader.readAsDataURL(file);
 }
 
 async function openRestaurant(tenantId) {
@@ -485,10 +556,12 @@ async function createRestaurantAccount() {
 
   const payload = {
     businessName: restaurantBusinessNameInput?.value.trim() || '',
+    identityLabel: restaurantIdentityLabelInput?.value.trim() || '',
     fullName: restaurantOwnerNameInput?.value.trim() || '',
     email: restaurantLoginInput?.value.trim() || '',
     password: restaurantPasswordInput?.value || '',
-    businessType: restaurantBusinessTypeInput?.value || 'Restaurant'
+    businessType: restaurantBusinessTypeInput?.value || 'Restaurant',
+    logoDataUrl: restaurantLogoDataUrl
   };
 
   if (!payload.businessName || !payload.fullName || !payload.email || payload.password.length < 6) {
@@ -509,6 +582,7 @@ async function createRestaurantAccount() {
     adminUsers = Array.isArray(response.users) ? response.users : adminUsers;
     adminUserTotals = response.totals || adminUserTotals;
     restaurantForm.reset();
+    clearRestaurantLogo();
     renderAdminUsers();
     renderRestaurantSelector();
     setRestaurantStatus('Restaurant created. Opening workspace...', 'success');
@@ -565,6 +639,9 @@ const restaurantList = document.querySelector('#restaurant-list');
 const refreshRestaurantsBtn = document.querySelector('#refresh-restaurants');
 const restaurantForm = document.querySelector('#restaurant-form');
 const restaurantBusinessNameInput = document.querySelector('#restaurant-business-name');
+const restaurantIdentityLabelInput = document.querySelector('#restaurant-identity-label');
+const restaurantLogoInput = document.querySelector('#restaurant-logo');
+const restaurantLogoPreview = document.querySelector('#restaurant-logo-preview');
 const restaurantOwnerNameInput = document.querySelector('#restaurant-owner-name');
 const restaurantLoginInput = document.querySelector('#restaurant-login');
 const restaurantPasswordInput = document.querySelector('#restaurant-password');
@@ -3401,6 +3478,12 @@ if (restaurantList) {
     if (!card) return;
 
     await openRestaurant(card.dataset.tenantId);
+  });
+}
+
+if (restaurantLogoInput) {
+  restaurantLogoInput.addEventListener('change', () => {
+    loadRestaurantLogoFile(restaurantLogoInput.files?.[0] || null);
   });
 }
 

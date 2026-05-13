@@ -90,6 +90,21 @@
           </div>
 
           <div class="form-field">
+            <label for="restaurant-identity-label">Identity / Concept</label>
+            <input type="text" id="restaurant-identity-label" placeholder="Fine dining, cafe, casino bar..." maxlength="80" />
+          </div>
+
+          <div class="form-field">
+            <label for="restaurant-logo">Logo or Photo</label>
+            <input type="file" id="restaurant-logo" accept="image/png,image/jpeg" />
+            <small>PNG or JPG under 800 KB.</small>
+          </div>
+
+          <div id="restaurant-logo-preview" class="restaurant-logo-preview" hidden>
+            <span>No logo selected</span>
+          </div>
+
+          <div class="form-field">
             <label for="restaurant-owner-name">Owner / Admin Name</label>
             <input type="text" id="restaurant-owner-name" autocomplete="name" required />
           </div>

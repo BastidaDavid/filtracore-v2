@@ -22,7 +22,7 @@ app.use((req, res, next) => {
   next()
 })
 app.use(cors())
-app.use(express.json())
+app.use(express.json({ limit: '1mb' }))
 
 const pool = new Pool({
   connectionString: databaseUrl,
@@ -114,6 +114,25 @@ function slugify(value) {
     .slice(0, 48) || 'business'
 }
 
+function normalizeIdentityLabel(value) {
+  return String(value || '').trim().slice(0, 80)
+}
+
+function normalizeLogoDataUrl(value) {
+  const logo = String(value || '').trim()
+  if (!logo) return ''
+
+  if (logo.length > 800000) {
+    throw badRequest('Logo image must be under 800 KB')
+  }
+
+  if (!/^data:image\/(png|jpe?g);base64,[a-z0-9+/=\s]+$/i.test(logo)) {
+    throw badRequest('Logo must be a PNG or JPG image')
+  }
+
+  return logo.replace(/^data:image\/jpg;/i, 'data:image/jpeg;')
+}
+
 function hashPassword(password, salt = crypto.randomBytes(16).toString('hex')) {
   const hash = crypto
     .pbkdf2Sync(String(password), salt, passwordIterations, passwordKeyLength, passwordDigest)
@@ -175,6 +194,8 @@ function mapAdminUser(row) {
     id: Number(row.user_id),
     tenantId: Number(row.tenant_id),
     businessName: row.tenant_name || '',
+    identityLabel: row.identity_label || '',
+    logoDataUrl: row.logo_data_url || '',
     fullName: row.name || '',
     email: row.email || '',
     role: row.role || 'admin',
@@ -267,6 +288,8 @@ async function ensureSchema() {
       tenant_id SERIAL PRIMARY KEY,
       name TEXT NOT NULL,
       slug TEXT UNIQUE NOT NULL,
+      logo_data_url TEXT,
+      identity_label TEXT,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
 
@@ -344,6 +367,8 @@ async function ensureSchema() {
   `)
 
   await pool.query(`
+    ALTER TABLE tenants ADD COLUMN IF NOT EXISTS logo_data_url TEXT;
+    ALTER TABLE tenants ADD COLUMN IF NOT EXISTS identity_label TEXT;
     ALTER TABLE machines ADD COLUMN IF NOT EXISTS tenant_id INTEGER REFERENCES tenants(tenant_id) ON DELETE CASCADE;
     ALTER TABLE inventory ADD COLUMN IF NOT EXISTS tenant_id INTEGER REFERENCES tenants(tenant_id) ON DELETE CASCADE;
     ALTER TABLE filters ADD COLUMN IF NOT EXISTS tenant_id INTEGER REFERENCES tenants(tenant_id) ON DELETE CASCADE;
@@ -595,13 +620,17 @@ async function createPublicAccount({
   allowUsername = false,
   minimumPasswordLength = 8,
   role = 'admin',
-  createSessionToken = true
+  createSessionToken = true,
+  logoDataUrl,
+  identityLabel
 }) {
   const cleanBusinessName = String(businessName || '').trim()
   const cleanFullName = String(fullName || '').trim()
   const cleanEmail = normalizeEmail(email)
   const cleanPassword = String(password || '')
   const normalizedBusinessType = normalizeBusinessType(businessType)
+  const cleanLogoDataUrl = normalizeLogoDataUrl(logoDataUrl)
+  const cleanIdentityLabel = normalizeIdentityLabel(identityLabel)
 
   if (!cleanBusinessName || !cleanFullName || !cleanEmail || (!allowUsername && !isValidEmail(cleanEmail))) {
     throw badRequest(allowUsername
@@ -626,11 +655,11 @@ async function createPublicAccount({
     const slug = await ensureUniqueTenantSlug(client, cleanBusinessName)
     const tenantResult = await client.query(
       `
-      INSERT INTO tenants (name, slug)
-      VALUES ($1, $2)
+      INSERT INTO tenants (name, slug, logo_data_url, identity_label)
+      VALUES ($1, $2, $3, $4)
       RETURNING tenant_id, name AS tenant_name
       `,
-      [cleanBusinessName, slug]
+      [cleanBusinessName, slug, cleanLogoDataUrl || null, cleanIdentityLabel || null]
     )
     const tenantId = Number(tenantResult.rows[0].tenant_id)
 
@@ -1062,10 +1091,12 @@ async function getAdminUsersPayload() {
       users.tenant_id,
       users.email,
       users.name,
-      users.role,
-      users.created_at,
-      tenants.name AS tenant_name,
-      (
+        users.role,
+        users.created_at,
+        tenants.name AS tenant_name,
+        tenants.logo_data_url,
+        tenants.identity_label,
+        (
         SELECT COUNT(*)::int
         FROM machines
         WHERE machines.tenant_id = tenants.tenant_id
@@ -1137,7 +1168,9 @@ app.post('/api/admin/users', requireAuth, async (req, res) => {
       businessType: req.body.businessType,
       allowUsername: true,
       minimumPasswordLength: 6,
-      createSessionToken: false
+      createSessionToken: false,
+      logoDataUrl: req.body.logoDataUrl,
+      identityLabel: req.body.identityLabel
     })
     const payload = await getAdminUsersPayload()
     const user = payload.users.find(item => item.id === session.user.id) || session.user
