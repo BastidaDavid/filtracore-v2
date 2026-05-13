@@ -46,6 +46,7 @@ const defaultTenantSlug = 'default'
 const publicBusinessTypes = new Set(['Restaurant', 'Hospitality', 'Casino', 'Retail', 'Warehouse', 'Other'])
 const demoEmail = 'demo@filtracore.io'
 const demoPassword = 'FiltraCoreDemo1!'
+const brainEmail = normalizeEmail(process.env.FILTRACORE_BRAIN_EMAIL || 'bastidasystems@gmail.com')
 
 function toNullableNumber(value) {
   if (value === null || value === undefined || value === '') return null
@@ -156,6 +157,27 @@ function mapAuthUser(row) {
     role: row.role || 'user',
     tenantId: Number(row.tenant_id),
     tenantName: row.tenant_name || row.tenant || ''
+  }
+}
+
+function isBrainUser(user) {
+  return normalizeEmail(user?.email) === brainEmail || String(user?.role || '').toLowerCase() === 'superadmin'
+}
+
+function mapAdminUser(row) {
+  return {
+    id: Number(row.user_id),
+    tenantId: Number(row.tenant_id),
+    businessName: row.tenant_name || '',
+    fullName: row.name || '',
+    email: row.email || '',
+    role: row.role || 'admin',
+    machines: toNumber(row.machines_count),
+    inventory: toNumber(row.inventory_count),
+    filters: toNumber(row.filters_count),
+    maintenanceRecords: toNumber(row.maintenance_count),
+    createdAt: row.created_at,
+    lastSessionAt: row.last_session_at
   }
 }
 
@@ -377,6 +399,7 @@ async function ensureSchema() {
 
   await seedAdminUser(defaultTenantId)
   await seedDemoUser()
+  await seedBrainUser()
 }
 
 async function seedAdminUser(defaultTenantId) {
@@ -622,6 +645,56 @@ async function seedDemoUser() {
     [hashPassword(demoPassword), 'App Review Demo', demoEmail]
   )
   await seedSampleTenantData(pool, Number(existing.rows[0].tenant_id), 'Northstar Hospitality')
+}
+
+async function seedBrainUser() {
+  const password = process.env.FILTRACORE_BRAIN_PASSWORD
+
+  if (!password) return
+
+  const businessName = process.env.FILTRACORE_BRAIN_BUSINESS || 'Bastida Systems'
+  const fullName = process.env.FILTRACORE_BRAIN_NAME || 'Bastida Systems Admin'
+  const existing = await pool.query(
+    `
+    SELECT users.user_id, users.tenant_id
+    FROM users
+    WHERE users.email = $1
+    LIMIT 1
+    `,
+    [brainEmail]
+  )
+
+  if (existing.rowCount === 0) {
+    await createPublicAccount({
+      businessName,
+      fullName,
+      email: brainEmail,
+      password,
+      businessType: 'Other'
+    })
+  }
+
+  const userResult = await pool.query(
+    `
+    SELECT users.user_id, users.tenant_id
+    FROM users
+    WHERE users.email = $1
+    LIMIT 1
+    `,
+    [brainEmail]
+  )
+
+  if (userResult.rowCount === 0) return
+
+  await pool.query(
+    'UPDATE users SET password_hash = $1, name = $2, role = $3 WHERE email = $4',
+    [hashPassword(password), fullName, 'superadmin', brainEmail]
+  )
+  await pool.query(
+    'UPDATE tenants SET name = $1 WHERE tenant_id = $2',
+    [businessName, Number(userResult.rows[0].tenant_id)]
+  )
+  await seedSampleTenantData(pool, Number(userResult.rows[0].tenant_id), businessName)
 }
 
 async function getState(auth, db = pool) {
@@ -910,6 +983,71 @@ app.delete('/api/auth/account', requireAuth, async (req, res) => {
     handleError(res, error, 'Failed to delete account')
   } finally {
     client.release()
+  }
+})
+
+app.get('/api/admin/users', requireAuth, async (req, res) => {
+  try {
+    if (!isBrainUser(req.auth)) {
+      return res.status(403).json({ error: 'Only Bastida Systems can view FiltraCore users' })
+    }
+
+    const result = await pool.query(
+      `
+      SELECT
+        users.user_id,
+        users.tenant_id,
+        users.email,
+        users.name,
+        users.role,
+        users.created_at,
+        tenants.name AS tenant_name,
+        (
+          SELECT COUNT(*)::int
+          FROM machines
+          WHERE machines.tenant_id = tenants.tenant_id
+        ) AS machines_count,
+        (
+          SELECT COUNT(*)::int
+          FROM inventory
+          WHERE inventory.tenant_id = tenants.tenant_id
+        ) AS inventory_count,
+        (
+          SELECT COUNT(*)::int
+          FROM filters
+          WHERE filters.tenant_id = tenants.tenant_id
+        ) AS filters_count,
+        (
+          SELECT COUNT(*)::int
+          FROM maintenance
+          WHERE maintenance.tenant_id = tenants.tenant_id
+        ) AS maintenance_count,
+        (
+          SELECT MAX(sessions.last_used_at)
+          FROM sessions
+          WHERE sessions.user_id = users.user_id
+        ) AS last_session_at
+      FROM users
+      INNER JOIN tenants ON tenants.tenant_id = users.tenant_id
+      ORDER BY users.created_at DESC
+      LIMIT 500
+      `
+    )
+
+    const users = result.rows.map(mapAdminUser)
+
+    res.json({
+      ok: true,
+      totals: {
+        users: users.length,
+        businesses: new Set(users.map(user => user.tenantId)).size,
+        demoUsers: users.filter(user => normalizeEmail(user.email) === demoEmail).length,
+        brainUsers: users.filter(user => isBrainUser(user)).length
+      },
+      users
+    })
+  } catch (error) {
+    handleError(res, error, 'Failed to load users')
   }
 })
 

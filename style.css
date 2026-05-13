@@ -3191,6 +3191,107 @@ button.clickable-kpi small::before,
   letter-spacing: -0.04em;
 }
 
+.accounts-kpis {
+  margin-top: 22px;
+}
+
+.accounts-toolbar {
+  margin-top: 22px;
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: center;
+  padding: 16px 18px;
+  border: 1px solid #e2e8f0;
+  border-radius: 18px;
+  background: #f8fafc;
+}
+
+.accounts-toolbar p {
+  color: #475569;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.accounts-toolbar p[data-tone="success"] {
+  color: #15803d;
+}
+
+.accounts-toolbar p[data-tone="error"] {
+  color: #dc2626;
+}
+
+.accounts-list {
+  margin-top: 18px;
+  display: grid;
+  gap: 12px;
+}
+
+.account-row {
+  display: grid;
+  grid-template-columns: minmax(210px, 1.2fr) minmax(180px, 1fr) minmax(280px, 1.4fr);
+  gap: 16px;
+  align-items: center;
+  padding: 16px;
+  border: 1px solid #e2e8f0;
+  border-radius: 18px;
+  background: linear-gradient(180deg, #ffffff, #f8fafc);
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.04);
+}
+
+.account-row h3 {
+  font-size: 17px;
+  color: #0f172a;
+}
+
+.account-row p,
+.account-row span {
+  color: #64748b;
+  font-size: 13px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.account-row strong {
+  display: inline-flex;
+  width: max-content;
+  margin-top: 8px;
+  padding: 5px 9px;
+  border-radius: 999px;
+  background: #e0f2fe;
+  color: #075985;
+  font-size: 12px;
+  text-transform: capitalize;
+}
+
+.account-row-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.account-row-metrics div {
+  padding: 10px;
+  border-radius: 12px;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+}
+
+.account-row-metrics span {
+  display: block;
+  font-size: 11px;
+  font-weight: 900;
+  text-transform: uppercase;
+  color: #94a3b8;
+}
+
+.account-row-metrics b {
+  display: block;
+  margin-top: 4px;
+  font-size: 18px;
+  color: #0f172a;
+}
+
 .report-badge {
   min-width: max-content;
   padding: 7px 11px;
@@ -4345,6 +4446,19 @@ button.clickable-kpi small::before,
 }
 
 @media (max-width: 900px) {
+  .account-row {
+    grid-template-columns: 1fr;
+  }
+
+  .account-row-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .accounts-toolbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
   .app-header {
     position: static;
     width: 100%;

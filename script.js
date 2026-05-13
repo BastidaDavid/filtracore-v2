@@ -46,9 +46,17 @@ const maintenanceRecords = loadStoredArray('filtracore_maintenance');
 const API_BASE_URL = window.FILTRACORE_API_BASE_URL || '';
 const authTokenKey = 'filtracore_auth_token';
 const authUserKey = 'filtracore_auth_user';
+const brainUserEmail = 'bastidasystems@gmail.com';
 let authToken = localStorage.getItem(authTokenKey) || '';
 let currentUser = loadStoredObject(authUserKey, null);
 let apiAvailable = false;
+let adminUsers = [];
+let adminUserTotals = {};
+
+function isBrainUser() {
+  return String(currentUser?.email || '').trim().toLowerCase() === brainUserEmail
+    || String(currentUser?.role || '').trim().toLowerCase() === 'superadmin';
+}
 
 function normalizeMachine(machine) {
   return {
@@ -163,6 +171,7 @@ function updateAuthUI() {
   const loginScreen = document.querySelector('#login-screen');
   const accountPanel = document.querySelector('#account-panel');
   const accountName = document.querySelector('#account-name');
+  const accountsNav = document.querySelector('#accounts-nav');
 
   document.body.classList.toggle('auth-required', !isSignedIn);
 
@@ -176,6 +185,10 @@ function updateAuthUI() {
 
   if (accountName) {
     accountName.textContent = currentUser?.name || currentUser?.email || '';
+  }
+
+  if (accountsNav) {
+    accountsNav.hidden = !isSignedIn || !isBrainUser();
   }
 }
 
@@ -198,6 +211,8 @@ function clearAuthSession() {
   authToken = '';
   currentUser = null;
   apiAvailable = false;
+  adminUsers = [];
+  adminUserTotals = {};
   localStorage.removeItem(authTokenKey);
   localStorage.removeItem(authUserKey);
   clearLocalOperationalData();
@@ -247,6 +262,7 @@ async function signIn(email, password) {
 
   setAuthSession(session);
   await loadServerData();
+  await loadAdminUsers();
   renderApp();
 }
 
@@ -275,6 +291,86 @@ async function loadServerData() {
   }
 }
 
+function formatAccountDate(value) {
+  if (!value) return 'Not available';
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? 'Not available' : date.toLocaleDateString();
+}
+
+function setAccountsStatus(message, tone = '') {
+  if (!accountsStatus) return;
+
+  accountsStatus.textContent = message;
+  accountsStatus.dataset.tone = tone;
+}
+
+function renderAdminUsers() {
+  if (accountsTotalUsers) accountsTotalUsers.textContent = adminUserTotals.users ?? adminUsers.length;
+  if (accountsBusinesses) accountsBusinesses.textContent = adminUserTotals.businesses ?? 0;
+  if (accountsDemoUsers) accountsDemoUsers.textContent = adminUserTotals.demoUsers ?? 0;
+  if (accountsBrainUsers) accountsBrainUsers.textContent = adminUserTotals.brainUsers ?? 0;
+
+  if (!accountsList) return;
+
+  accountsList.innerHTML = '';
+
+  if (!isBrainUser()) {
+    accountsList.innerHTML = '<p class="empty-state">Only Bastida Systems can view account registrations.</p>';
+    return;
+  }
+
+  if (!adminUsers.length) {
+    accountsList.innerHTML = '<p class="empty-state">No accounts loaded.</p>';
+    return;
+  }
+
+  adminUsers.forEach(user => {
+    const row = document.createElement('article');
+    row.className = 'account-row';
+    row.innerHTML = `
+      <div>
+        <h3>${escapeHTML(user.businessName || 'Business')}</h3>
+        <p>${escapeHTML(user.fullName || 'Owner')}</p>
+        <strong>${escapeHTML(user.role || 'admin')}</strong>
+      </div>
+      <div>
+        <p>${escapeHTML(user.email || '')}</p>
+        <span>Created ${escapeHTML(formatAccountDate(user.createdAt))}</span>
+        <span>Last active ${escapeHTML(formatAccountDate(user.lastSessionAt))}</span>
+      </div>
+      <div class="account-row-metrics">
+        <div><span>Machines</span><b>${Number(user.machines) || 0}</b></div>
+        <div><span>Inventory</span><b>${Number(user.inventory) || 0}</b></div>
+        <div><span>Filters</span><b>${Number(user.filters) || 0}</b></div>
+        <div><span>Maint.</span><b>${Number(user.maintenanceRecords) || 0}</b></div>
+      </div>
+    `;
+    accountsList.appendChild(row);
+  });
+}
+
+async function loadAdminUsers() {
+  if (!isBrainUser()) {
+    adminUsers = [];
+    adminUserTotals = {};
+    renderAdminUsers();
+    return;
+  }
+
+  setAccountsStatus('Loading account registrations...');
+
+  try {
+    const payload = await apiRequest('/api/admin/users');
+    adminUsers = Array.isArray(payload.users) ? payload.users : [];
+    adminUserTotals = payload.totals || {};
+    renderAdminUsers();
+    setAccountsStatus(adminUsers.length ? 'Accounts synced from Render.' : 'No accounts yet.', 'success');
+  } catch (error) {
+    console.error(error);
+    setAccountsStatus(error.message || 'Unable to load accounts.', 'error');
+  }
+}
+
 function renderApp() {
   renderMachines();
   updateMachineOptions();
@@ -289,6 +385,7 @@ function renderApp() {
   renderRiskScore();
   renderFinancialMetrics();
   renderReports();
+  renderAdminUsers();
   renderSmartSetup();
 }
 
@@ -422,6 +519,13 @@ const generateReportSummaryBtn = document.querySelector('#generate-report-summar
 const printReportBtn = document.querySelector('#print-report');
 const reportOutputCard = document.querySelector('#report-output-card');
 const reportOutput = document.querySelector('#report-output');
+const accountsTotalUsers = document.querySelector('#accounts-total-users');
+const accountsBusinesses = document.querySelector('#accounts-businesses');
+const accountsDemoUsers = document.querySelector('#accounts-demo-users');
+const accountsBrainUsers = document.querySelector('#accounts-brain-users');
+const accountsStatus = document.querySelector('#accounts-status');
+const accountsList = document.querySelector('#accounts-list');
+const refreshAccountsBtn = document.querySelector('#refresh-accounts');
 const generateMaintenanceReportBtn = document.querySelector('#generate-maintenance-report');
 const printMaintenanceReportBtn = document.querySelector('#print-maintenance-report');
 const closeMaintenanceReportBtn = document.querySelector('#close-maintenance-report');
@@ -3107,6 +3211,12 @@ if (logoutButton) {
   });
 }
 
+if (refreshAccountsBtn) {
+  refreshAccountsBtn.addEventListener('click', async () => {
+    await loadAdminUsers();
+  });
+}
+
 links.forEach(link => {
   link.addEventListener('click', (e) => {
     e.preventDefault();
@@ -3672,6 +3782,7 @@ async function initializeApp() {
 
   if (authToken) {
     await loadServerData();
+    await loadAdminUsers();
   }
 
   renderApp();

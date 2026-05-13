@@ -23,6 +23,7 @@
       <a href="#filters">Filters</a>
       <a href="#maintenance">Maintenance</a>
       <a href="#reports">Reports</a>
+      <a href="#accounts" id="accounts-nav" hidden>Accounts</a>
     </nav>
 
     <div id="account-panel" class="account-panel" hidden>
@@ -760,6 +761,54 @@
           </div>
         </div>
         <div id="report-output" class="report-output"></div>
+      </div>
+    </section>
+
+    <section id="accounts" class="section-card module-section accounts-section" style="display:none;">
+      <div class="section-header module-hero">
+        <div class="module-title-row">
+          <div class="module-icon" aria-hidden="true">AC</div>
+          <div>
+            <span class="section-label">Bastida Systems</span>
+            <h2>Accounts</h2>
+            <p>View businesses and users that register through FiltraCore.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="module-kpi-row accounts-kpis">
+        <div class="module-kpi-card">
+          <span>Total Users</span>
+          <strong id="accounts-total-users">0</strong>
+          <small>All registered accounts</small>
+        </div>
+
+        <div class="module-kpi-card success">
+          <span>Businesses</span>
+          <strong id="accounts-businesses">0</strong>
+          <small>Workspaces created</small>
+        </div>
+
+        <div class="module-kpi-card warning">
+          <span>Demo</span>
+          <strong id="accounts-demo-users">0</strong>
+          <small>Review/demo accounts</small>
+        </div>
+
+        <div class="module-kpi-card">
+          <span>Cerebro</span>
+          <strong id="accounts-brain-users">0</strong>
+          <small>Bastida Systems access</small>
+        </div>
+      </div>
+
+      <div class="accounts-toolbar">
+        <p id="accounts-status">Accounts are available only to Bastida Systems.</p>
+        <button type="button" id="refresh-accounts" class="secondary-btn">Refresh</button>
+      </div>
+
+      <div id="accounts-list" class="accounts-list">
+        <p class="empty-state">No accounts loaded.</p>
       </div>
     </section>
   </main>
