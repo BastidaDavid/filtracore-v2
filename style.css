@@ -44,6 +44,7 @@ body.restaurant-required .app-layout {
 }
 
 .restaurant-heading {
+  position: relative;
   display: grid;
   justify-items: center;
   gap: 8px;
@@ -54,6 +55,25 @@ body.restaurant-required .app-layout {
   box-shadow: 0 28px 80px rgba(15, 23, 42, 0.11);
   text-align: center;
   backdrop-filter: blur(20px);
+}
+
+.restaurant-logout-btn {
+  position: absolute;
+  top: 22px;
+  right: 22px;
+  min-height: 42px !important;
+  border: 1px solid #dbe4ef !important;
+  border-radius: 999px !important;
+  background: #ffffff !important;
+  color: #334155 !important;
+  box-shadow: 0 12px 30px rgba(15, 23, 42, 0.08) !important;
+}
+
+.restaurant-logout-btn:hover,
+.restaurant-logout-btn:focus-visible {
+  border-color: #cbd5e1 !important;
+  background: #f8fafc !important;
+  color: #0f172a !important;
 }
 
 .restaurant-heading h2 {
@@ -4946,6 +4966,12 @@ button.clickable-kpi small::before,
   .restaurant-panel {
     padding: 20px;
     border-radius: 22px;
+  }
+
+  .restaurant-logout-btn {
+    position: static;
+    justify-self: end;
+    margin-bottom: 8px;
   }
 
   .signup-form,

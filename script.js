@@ -796,6 +796,7 @@ const signupPasswordInput = document.querySelector('#signup-password');
 const signupConfirmPasswordInput = document.querySelector('#signup-confirm-password');
 const signupError = document.querySelector('#signup-error');
 const signupSubmitButton = document.querySelector('#signup-submit');
+const restaurantLogoutButton = document.querySelector('#restaurant-logout-button');
 const logoutButton = document.querySelector('#logout-button');
 const switchRestaurantButton = document.querySelector('#switch-restaurant-button');
 const restaurantScreen = document.querySelector('#restaurant-screen');
@@ -3664,6 +3665,12 @@ if (signupForm) {
 
 if (logoutButton) {
   logoutButton.addEventListener('click', async () => {
+    await signOut();
+  });
+}
+
+if (restaurantLogoutButton) {
+  restaurantLogoutButton.addEventListener('click', async () => {
     await signOut();
   });
 }
