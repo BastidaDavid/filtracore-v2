@@ -781,41 +781,27 @@ function renderApp() {
 function maybeShowValuedClientNotice() {
   if (!machineAccess.unlimited || !authToken) return;
 
-  const noticeKey = `filtracore_valued_client_notice_${getActiveWorkspaceKey()}`;
-  if (localStorage.getItem(noticeKey) === 'dismissed') return;
+  const noticeKey = `filtracore_valued_client_notice_${getActiveWorkspaceKey()}_${authToken.slice(0, 10)}`;
+  if (sessionStorage.getItem(noticeKey) === 'dismissed') return;
 
   const overlay = document.createElement('div');
   overlay.className = 'modal-overlay valued-client-modal is-open';
   overlay.setAttribute('aria-hidden', 'false');
   overlay.innerHTML = `
     <div class="modal-card valued-client-card" role="dialog" aria-modal="true" aria-labelledby="valued-client-title">
-      <div class="valued-client-icon">∞</div>
-      <div class="modal-header">
-        <div>
-          <span class="section-label">Valued Client Access</span>
-          <h2 id="valued-client-title">Unlimited machines enabled</h2>
-          <p>${escapeHTML(machineAccess.message)}</p>
-        </div>
-        <button type="button" class="modal-close" aria-label="Close valued client notice">×</button>
-      </div>
-      <div class="valued-client-copy">
-        <strong>This workspace is not limited to ${machineAccess.limit || 5} machines.</strong>
-        <p>Strat and Westgate keep unlimited machine registration as early valued FiltraCore clients. New standard accounts are sized for small restaurants and include up to ${machineAccess.limit || 5} machines.</p>
-      </div>
-      <div class="modal-footer">
-        <button type="button">Got it</button>
-      </div>
+      <h2 id="valued-client-title">Unlimited Machine Access</h2>
+      <p>${escapeHTML(machineAccess.message)}</p>
+      <button type="button">Got it</button>
     </div>
   `;
 
   const close = () => {
-    localStorage.setItem(noticeKey, 'dismissed');
+    sessionStorage.setItem(noticeKey, 'dismissed');
     overlay.classList.remove('is-open');
     overlay.remove();
   };
 
-  overlay.querySelector('.modal-close')?.addEventListener('click', close);
-  overlay.querySelector('.modal-footer button')?.addEventListener('click', close);
+  overlay.querySelector('button')?.addEventListener('click', close);
   overlay.addEventListener('click', (event) => {
     if (event.target === overlay) close();
   });
