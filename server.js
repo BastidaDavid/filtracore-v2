@@ -44,9 +44,25 @@ const passwordDigest = 'sha512'
 const sessionDays = toNumber(process.env.FILTRACORE_SESSION_DAYS, 30)
 const defaultTenantSlug = 'default'
 const publicBusinessTypes = new Set(['Restaurant', 'Hospitality', 'Casino', 'Retail', 'Warehouse', 'Other'])
-const demoEmail = 'demo@filtracore.io'
-const demoPassword = 'FiltraCoreDemo1!'
 const brainEmail = normalizeEmail(process.env.FILTRACORE_BRAIN_EMAIL || 'bastidasystems@gmail.com')
+const westgateAccountEmail = normalizeEmail(process.env.WESTGATE_ACCOUNT_EMAIL || 'westgate@bastidasystems.io')
+const stratAccountEmail = normalizeEmail(process.env.STRAT_ACCOUNT_EMAIL || 'strat01@bastidasystems.io')
+const demoEmail = normalizeEmail(process.env.BASTIDA_DEMO_EMAIL || 'demo@bastidasystems.io')
+const demoPassword = process.env.BASTIDA_DEMO_PASSWORD || 'LineOpsDemo1!'
+const syncSecret = String(process.env.BASTIDA_SYNC_SECRET || '').trim()
+const beoflowApiBaseURL = String(process.env.BEOFLOW_API_BASE_URL || '').trim().replace(/\/+$/, '')
+const unifiedAccountAliases = new Map([
+  ['bastida01', brainEmail],
+  ['westgate', westgateAccountEmail],
+  ['west@gmail.com', westgateAccountEmail],
+  ['strat01', stratAccountEmail],
+  ['armand01', stratAccountEmail],
+  ['armando01', stratAccountEmail],
+  ['ptslineops', stratAccountEmail],
+  ['ptskitchen@lineops.io', stratAccountEmail],
+  ['demo@filtracore.io', demoEmail],
+  ['demo@lineops.io', demoEmail]
+])
 
 function toNullableNumber(value) {
   if (value === null || value === undefined || value === '') return null
@@ -87,13 +103,18 @@ function normalizeEmail(email) {
 }
 
 function normalizeLoginIdentifier(value) {
-  return normalizeEmail(value)
+  const login = normalizeEmail(value)
+  return unifiedAccountAliases.get(login) || login
 }
 
 function normalizeSeedLogin(value) {
   const login = normalizeLoginIdentifier(value)
-  if (login === 'armand01' || login === 'armando01') return 'strat01'
   return login
+}
+
+function accountIdentifierCandidates(value) {
+  const raw = normalizeEmail(value)
+  return [...new Set([normalizeLoginIdentifier(raw), raw].filter(Boolean))]
 }
 
 function isValidEmail(email) {
@@ -428,8 +449,9 @@ async function ensureSchema() {
     ALTER TABLE maintenance ALTER COLUMN tenant_id SET NOT NULL;
   `)
 
-  await seedAdminUser(defaultTenantId)
   await migrateLegacyStratLogin()
+  await seedAdminUser(defaultTenantId)
+  await seedCanonicalClientUsers()
   await seedDemoUser()
   await seedBrainUser()
 }
@@ -474,13 +496,13 @@ async function seedAdminUser(defaultTenantId) {
 async function migrateLegacyStratLogin() {
   const target = await pool.query(
     'SELECT user_id, tenant_id FROM users WHERE LOWER(email) = $1 LIMIT 1',
-    ['strat01']
+    [stratAccountEmail]
   )
   const legacy = await pool.query(
     `
     SELECT user_id, tenant_id
     FROM users
-    WHERE LOWER(email) IN ('armand01', 'armando01')
+    WHERE LOWER(email) IN ('strat01', 'armand01', 'armando01', 'ptslineops', 'ptskitchen@lineops.io')
     ORDER BY created_at ASC
     `
   )
@@ -490,7 +512,7 @@ async function migrateLegacyStratLogin() {
       await pool.query('DELETE FROM sessions WHERE user_id = $1', [user.user_id])
       await pool.query('DELETE FROM users WHERE user_id = $1', [user.user_id])
     }
-    await pool.query('UPDATE tenants SET name = $1 WHERE tenant_id = $2', ['Strat01', Number(target.rows[0].tenant_id)])
+    await pool.query('UPDATE tenants SET name = $1, identity_label = $2 WHERE tenant_id = $3', ['PTS Sport and Wings', 'Strat', Number(target.rows[0].tenant_id)])
     return
   }
 
@@ -499,9 +521,9 @@ async function migrateLegacyStratLogin() {
   const user = legacy.rows[0]
   await pool.query(
     'UPDATE users SET email = $1, name = $2 WHERE user_id = $3',
-    ['strat01', 'Strat01', user.user_id]
+    [stratAccountEmail, 'Strat Admin', user.user_id]
   )
-  await pool.query('UPDATE tenants SET name = $1 WHERE tenant_id = $2', ['Strat01', Number(user.tenant_id)])
+  await pool.query('UPDATE tenants SET name = $1, identity_label = $2 WHERE tenant_id = $3', ['PTS Sport and Wings', 'Strat', Number(user.tenant_id)])
 }
 
 async function ensureUniqueTenantSlug(db, businessName) {
@@ -626,7 +648,7 @@ async function createPublicAccount({
 }) {
   const cleanBusinessName = String(businessName || '').trim()
   const cleanFullName = String(fullName || '').trim()
-  const cleanEmail = normalizeEmail(email)
+  const cleanEmail = normalizeLoginIdentifier(email)
   const cleanPassword = String(password || '')
   const normalizedBusinessType = normalizeBusinessType(businessType)
   const cleanLogoDataUrl = normalizeLogoDataUrl(logoDataUrl)
@@ -699,33 +721,171 @@ async function createPublicAccount({
   }
 }
 
-async function seedDemoUser() {
+function canonicalClientAccounts() {
+  return [
+    {
+      email: stratAccountEmail,
+      password: process.env.STRAT_ACCOUNT_PASSWORD || 'Strat01',
+      businessName: 'PTS Sport and Wings',
+      fullName: 'Strat Admin',
+      businessType: 'Restaurant',
+      identityLabel: 'Strat',
+      candidates: ['strat01', 'armand01', 'armando01', 'ptslineops', 'ptskitchen@lineops.io']
+    },
+    {
+      email: westgateAccountEmail,
+      password: process.env.WESTGATE_ACCOUNT_PASSWORD || 'Westgate',
+      businessName: 'Westgate',
+      fullName: 'Westgate Admin',
+      businessType: 'Casino',
+      identityLabel: 'Banquets and Pizza',
+      candidates: ['westgate', 'west@gmail.com']
+    }
+  ]
+}
+
+async function upsertFiltraCoreAccount(accountInput, { resetPassword = false, candidates = [] } = {}) {
+  const email = normalizeLoginIdentifier(accountInput.email || accountInput.login || accountInput.clientCode)
+  const password = accountInput.password ? String(accountInput.password) : ''
+  const businessName = String(accountInput.businessName || accountInput.business_name || accountInput.displayName || '').trim()
+  const fullName = String(accountInput.fullName || accountInput.full_name || accountInput.name || '').trim()
+  const businessType = normalizeBusinessType(accountInput.businessType || accountInput.business_type)
+  const identityLabel = normalizeIdentityLabel(accountInput.identityLabel)
+  const role = String(accountInput.role || '').trim() || (email === brainEmail ? 'superadmin' : 'admin')
+  const candidateEmails = [
+    email,
+    ...accountIdentifierCandidates(accountInput.email || accountInput.login || accountInput.clientCode),
+    ...candidates.flatMap(candidate => accountIdentifierCandidates(candidate))
+  ].map(normalizeEmail)
+  const uniqueCandidates = [...new Set(candidateEmails.filter(Boolean))]
+
+  if (!email || !isValidEmail(email) || !businessName || !fullName) {
+    throw badRequest('Business name, owner name, and a valid account email are required')
+  }
+
   const existing = await pool.query(
     `
-    SELECT users.user_id, users.tenant_id
+    SELECT users.user_id, users.tenant_id, users.email, users.name, users.password_hash, users.role
     FROM users
-    WHERE users.email = $1
+    WHERE LOWER(users.email) = ANY($1::text[])
+    ORDER BY CASE WHEN LOWER(users.email) = LOWER($2) THEN 0 ELSE 1 END, users.created_at ASC
     LIMIT 1
     `,
-    [demoEmail]
+    [uniqueCandidates, email]
   )
 
   if (existing.rowCount === 0) {
-    await createPublicAccount({
-      businessName: 'Northstar Hospitality',
-      fullName: 'App Review Demo',
-      email: demoEmail,
-      password: demoPassword,
-      businessType: 'Hospitality'
+    if (!password) {
+      throw badRequest('Password is required for a new account')
+    }
+
+    return createPublicAccount({
+      businessName,
+      fullName,
+      email,
+      password,
+      businessType,
+      role,
+      createSessionToken: false,
+      allowUsername: false,
+      minimumPasswordLength: 6,
+      identityLabel: accountInput.identityLabel,
+      logoDataUrl: accountInput.logoDataUrl
     })
-    return
   }
 
+  const user = existing.rows[0]
+  const shouldUpdatePassword = Boolean(password && resetPassword)
   await pool.query(
-    'UPDATE users SET password_hash = $1, name = $2 WHERE email = $3',
-    [hashPassword(demoPassword), 'App Review Demo', demoEmail]
+    `
+    UPDATE users
+    SET email = $1,
+        name = $2,
+        role = $3,
+        password_hash = CASE WHEN $4::boolean THEN $5 ELSE password_hash END
+    WHERE user_id = $6
+    `,
+    [
+      email,
+      fullName,
+      role,
+      shouldUpdatePassword,
+      shouldUpdatePassword ? hashPassword(password) : user.password_hash,
+      user.user_id
+    ]
   )
-  await seedSampleTenantData(pool, Number(existing.rows[0].tenant_id), 'Northstar Hospitality')
+  await pool.query(
+    'UPDATE tenants SET name = $1, identity_label = COALESCE(NULLIF($2, \'\'), identity_label) WHERE tenant_id = $3',
+    [businessName, identityLabel, Number(user.tenant_id)]
+  )
+  await seedSampleTenantData(pool, Number(user.tenant_id), businessName)
+
+  return {
+    token: '',
+    user: {
+      id: Number(user.user_id),
+      email,
+      name: fullName,
+      role,
+      tenantId: Number(user.tenant_id),
+      tenantName: businessName
+    }
+  }
+}
+
+async function seedCanonicalClientUsers() {
+  const shouldReset = process.env.FILTRACORE_RESET_CLIENT_PASSWORDS === 'true'
+  for (const account of canonicalClientAccounts()) {
+    await upsertFiltraCoreAccount(account, {
+      resetPassword: shouldReset,
+      candidates: account.candidates
+    })
+  }
+}
+
+async function syncAccountToBeoflow(accountInput) {
+  if (!syncSecret || !beoflowApiBaseURL) return
+
+  const email = normalizeLoginIdentifier(accountInput.email || accountInput.login || accountInput.clientCode)
+  if (!email || !isValidEmail(email)) return
+
+  try {
+    const response = await fetch(`${beoflowApiBaseURL}/api/sync/accounts`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Bastida-Sync-Secret': syncSecret
+      },
+      body: JSON.stringify({
+        source: 'filtracore',
+        account: {
+          ...accountInput,
+          email
+        }
+      })
+    })
+
+    if (!response.ok) {
+      const body = await response.text()
+      console.warn(`Beoflow account sync failed with ${response.status}: ${body.slice(0, 160)}`)
+    }
+  } catch (error) {
+    console.warn('Beoflow account sync failed', error.message)
+  }
+}
+
+async function seedDemoUser() {
+  await upsertFiltraCoreAccount({
+    businessName: 'Northstar Hospitality',
+    fullName: 'App Review Demo',
+    email: demoEmail,
+    password: demoPassword,
+    businessType: 'Hospitality',
+    identityLabel: 'Demo Workspace'
+  }, {
+    resetPassword: true,
+    candidates: ['demo@filtracore.io', 'demo@lineops.io']
+  })
 }
 
 async function seedBrainUser() {
@@ -980,10 +1140,11 @@ app.get('/api/version', (req, res) => {
 
 app.post('/api/auth/login', async (req, res) => {
   try {
-    const email = normalizeLoginIdentifier(req.body.username || req.body.email)
+    const rawEmail = normalizeEmail(req.body.username || req.body.email)
+    const email = normalizeLoginIdentifier(rawEmail)
     const password = req.body.password
 
-    if (!email || !password) {
+    if (!rawEmail || !password) {
       throw badRequest('Cliente and password are required')
     }
 
@@ -999,9 +1160,11 @@ app.post('/api/auth/login', async (req, res) => {
         tenants.name AS tenant_name
       FROM users
       INNER JOIN tenants ON tenants.tenant_id = users.tenant_id
-      WHERE users.email = $1
+      WHERE LOWER(users.email) = ANY($1::text[])
+      ORDER BY CASE WHEN LOWER(users.email) = LOWER($2) THEN 0 ELSE 1 END
+      LIMIT 1
       `,
-      [email]
+      [accountIdentifierCandidates(rawEmail), email]
     )
 
     if (result.rowCount === 0 || !verifyPassword(password, result.rows[0].password_hash)) {
@@ -1022,6 +1185,13 @@ app.post('/api/auth/login', async (req, res) => {
 app.post('/api/auth/signup', async (req, res) => {
   try {
     const session = await createPublicAccount({
+      businessName: req.body.businessName,
+      fullName: req.body.fullName,
+      email: req.body.email,
+      password: req.body.password,
+      businessType: req.body.businessType
+    })
+    await syncAccountToBeoflow({
       businessName: req.body.businessName,
       fullName: req.body.fullName,
       email: req.body.email,
@@ -1166,10 +1336,18 @@ app.post('/api/admin/users', requireAuth, async (req, res) => {
       email: req.body.email || req.body.username,
       password: req.body.password,
       businessType: req.body.businessType,
-      allowUsername: true,
+      allowUsername: false,
       minimumPasswordLength: 6,
       createSessionToken: false,
       logoDataUrl: req.body.logoDataUrl,
+      identityLabel: req.body.identityLabel
+    })
+    await syncAccountToBeoflow({
+      businessName: req.body.businessName,
+      fullName: req.body.fullName,
+      email: req.body.email || req.body.username,
+      password: req.body.password,
+      businessType: req.body.businessType,
       identityLabel: req.body.identityLabel
     })
     const payload = await getAdminUsersPayload()
@@ -1183,6 +1361,36 @@ app.post('/api/admin/users', requireAuth, async (req, res) => {
     })
   } catch (error) {
     handleError(res, error, 'Failed to create user')
+  }
+})
+
+app.post('/api/sync/accounts', async (req, res) => {
+  try {
+    if (!syncSecret || req.get('x-bastida-sync-secret') !== syncSecret) {
+      return res.status(404).json({ error: 'Not found.' })
+    }
+
+    const account = req.body.account || req.body
+    const session = await upsertFiltraCoreAccount(account, {
+      resetPassword: Boolean(account.password),
+      candidates: [
+        account.email,
+        account.login,
+        account.clientCode,
+        req.body.email,
+        req.body.login,
+        req.body.clientCode
+      ].filter(Boolean)
+    })
+    const payload = await getAdminUsersPayload()
+    const user = payload.users.find(item => item.id === session.user.id) || session.user
+
+    res.json({
+      ok: true,
+      user
+    })
+  } catch (error) {
+    handleError(res, error, 'Failed to sync account')
   }
 })
 

@@ -564,8 +564,8 @@ async function createRestaurantAccount() {
     logoDataUrl: restaurantLogoDataUrl
   };
 
-  if (!payload.businessName || !payload.fullName || !payload.email || payload.password.length < 6) {
-    setRestaurantStatus('Business, owner, login, and a 6+ character password are required.', 'error');
+  if (!payload.businessName || !payload.fullName || !payload.email.includes('@') || !payload.email.includes('.') || payload.password.length < 6) {
+    setRestaurantStatus('Business, owner, account email, and a 6+ character password are required.', 'error');
     return;
   }
 
