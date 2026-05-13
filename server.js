@@ -1177,7 +1177,7 @@ async function getMachineAccess(db, tenantId) {
     ownerEmail: ownerEmails[0] || '',
     message: unlimited
       ? 'As a valued early FiltraCore client, this workspace has unlimited machine access. Standard accounts include up to 5 machines.'
-      : `Standard FiltraCore accounts include up to ${standardMachineLimit} machines.`
+      : `Standard FiltraCore accounts include up to ${standardMachineLimit} machines. Upgrade your plan or buy more machine access to install additional machines.`
   }
 }
 
@@ -1186,7 +1186,7 @@ async function assertCanCreateMachine(auth) {
   if (access.unlimited || access.machines < standardMachineLimit) return access
 
   const error = badRequest(
-    `Standard FiltraCore accounts include up to ${standardMachineLimit} machines. Strat and Westgate have unlimited machine access as valued early clients.`
+    `This workspace has reached the ${standardMachineLimit}-machine Standard limit. Upgrade the plan or buy more machine access to install additional machines.`
   )
   error.statusCode = 403
   throw error

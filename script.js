@@ -48,6 +48,11 @@ const authTokenKey = 'filtracore_auth_token';
 const authUserKey = 'filtracore_auth_user';
 const selectedTenantKey = 'filtracore_selected_tenant_id';
 const brainUserEmail = 'bastidasystems@gmail.com';
+const standardMachineLimit = 5;
+const valuedMachineClientEmails = new Set([
+  'strat01@bastidasystems.io',
+  'westgate@bastidasystems.io'
+]);
 let authToken = localStorage.getItem(authTokenKey) || '';
 let currentUser = loadStoredObject(authUserKey, null);
 let selectedTenantId = localStorage.getItem(selectedTenantKey) || '';
@@ -72,8 +77,17 @@ function isBrainUser() {
     || String(currentUser?.role || '').trim().toLowerCase() === 'superadmin';
 }
 
+function isValuedMachineClientEmail(email) {
+  return valuedMachineClientEmails.has(String(email || '').trim().toLowerCase());
+}
+
 function getRestaurantWorkspaces() {
   return isBrainUser() ? adminUsers : restaurantWorkspaces;
+}
+
+function hasValuedMachineAccess(workspaces = getRestaurantWorkspaces()) {
+  return isValuedMachineClientEmail(currentUser?.email)
+    || workspaces.some(workspace => isValuedMachineClientEmail(workspace.email));
 }
 
 function getSelectedRestaurant() {
@@ -121,17 +135,13 @@ function normalizeMachineAccess(value) {
     ownerEmail: String(access.ownerEmail || '').trim().toLowerCase(),
     message: String(access.message || (unlimited
       ? 'As a valued early FiltraCore client, this workspace has unlimited machine access. Standard accounts include up to 5 machines.'
-      : 'Standard FiltraCore accounts include up to 5 machines.'))
+      : `Standard FiltraCore accounts include up to ${standardMachineLimit} machines. Upgrade your plan or buy more machine access to install additional machines.`))
   };
-}
-
-function getActiveWorkspaceKey() {
-  return selectedTenantId || currentUser?.tenantId || currentUser?.email || 'workspace';
 }
 
 function machineLimitMessage() {
   if (machineAccess.unlimited || machineAccess.limit === null) return '';
-  return `Standard FiltraCore accounts include up to ${machineAccess.limit} machines. Strat and Westgate have unlimited machine access as valued early clients.`;
+  return `This workspace has reached the ${machineAccess.limit}-machine Standard limit. Upgrade the plan or buy more machine access to install additional machines.`;
 }
 
 function isAtMachineLimit() {
@@ -247,7 +257,6 @@ function applyServerState(state) {
   machineAccess = normalizeMachineAccess(state.machineAccess);
 
   saveLocalData();
-  maybeShowValuedClientNotice();
 }
 
 function updateAuthUI() {
@@ -516,6 +525,39 @@ function validateSelectedRestaurant() {
   }
 }
 
+function renderRestaurantAccessNotice(isBrain, clientAccountLabel, workspaces) {
+  if (!restaurantAccessNotice) return;
+
+  const showNotice = Boolean(authToken && !isBrain);
+  restaurantAccessNotice.hidden = !showNotice;
+
+  if (!showNotice) {
+    restaurantAccessNotice.innerHTML = '';
+    restaurantAccessNotice.className = 'restaurant-access-notice';
+    return;
+  }
+
+  const valued = hasValuedMachineAccess(workspaces);
+  restaurantAccessNotice.className = `restaurant-access-notice ${valued ? 'is-valued' : 'is-standard'}`;
+  restaurantAccessNotice.innerHTML = valued
+    ? `
+      <div>
+        <span>Plan access</span>
+        <h3>Unlimited Machine Access</h3>
+        <p>${escapeHTML(clientAccountLabel)} is a valued early FiltraCore client. Every workspace under this account can register unlimited machines. Standard accounts include up to ${standardMachineLimit} machines per workspace.</p>
+      </div>
+      <strong>Unlimited</strong>
+    `
+    : `
+      <div>
+        <span>Standard plan</span>
+        <h3>${standardMachineLimit} machines included</h3>
+        <p>Upgrade your plan or buy more machine access to install additional machines in any workspace.</p>
+      </div>
+      <strong>Upgrade available</strong>
+    `;
+}
+
 function renderRestaurantSelector() {
   if (!restaurantList) return;
 
@@ -552,6 +594,8 @@ function renderRestaurantSelector() {
       : `Select the restaurant, business, or location under ${clientAccountLabel}. FiltraCore opens the correct workspace after you choose one.`;
   }
 
+  renderRestaurantAccessNotice(isBrain, clientAccountLabel, workspaces);
+
   restaurantList.innerHTML = '';
   if (restaurantTotalWorkspaces) restaurantTotalWorkspaces.textContent = '0';
   if (restaurantTotalMachines) restaurantTotalMachines.textContent = '0';
@@ -576,6 +620,11 @@ function renderRestaurantSelector() {
   if (restaurantTotalWorkspaces) restaurantTotalWorkspaces.textContent = totals.workspaces;
   if (restaurantTotalMachines) restaurantTotalMachines.textContent = totals.machines;
   if (restaurantTotalFilters) restaurantTotalFilters.textContent = totals.filters;
+
+  const valuedAccount = hasValuedMachineAccess(workspaces);
+  const planBadgeMarkup = valuedAccount
+    ? '<span class="client-workspace-plan is-valued">Unlimited machine access</span>'
+    : `<span class="client-workspace-plan is-standard">${standardMachineLimit} machine Standard plan</span>`;
 
   workspaces.forEach((user, index) => {
     const button = document.createElement('button');
@@ -614,6 +663,7 @@ function renderRestaurantSelector() {
           <div>
             <h3>${escapeHTML(user.businessName || currentUser?.tenantName || 'Restaurant')}</h3>
             <p>${escapeHTML(user.identityLabel || 'Restaurant')} · ${index === 0 ? 'Primary workspace' : 'Workspace'}</p>
+            ${planBadgeMarkup}
           </div>
         </div>
       `;
@@ -908,37 +958,6 @@ function renderApp() {
   renderSmartSetup();
 }
 
-function maybeShowValuedClientNotice() {
-  if (!machineAccess.unlimited || !authToken) return;
-
-  const noticeKey = `filtracore_valued_client_notice_${getActiveWorkspaceKey()}_${authToken.slice(0, 10)}`;
-  if (sessionStorage.getItem(noticeKey) === 'dismissed') return;
-
-  const overlay = document.createElement('div');
-  overlay.className = 'modal-overlay valued-client-modal is-open';
-  overlay.setAttribute('aria-hidden', 'false');
-  overlay.innerHTML = `
-    <div class="modal-card valued-client-card" role="dialog" aria-modal="true" aria-labelledby="valued-client-title">
-      <h2 id="valued-client-title">Unlimited Machine Access</h2>
-      <p>${escapeHTML(machineAccess.message)}</p>
-      <button type="button">Got it</button>
-    </div>
-  `;
-
-  const close = () => {
-    sessionStorage.setItem(noticeKey, 'dismissed');
-    overlay.classList.remove('is-open');
-    overlay.remove();
-  };
-
-  overlay.querySelector('button')?.addEventListener('click', close);
-  overlay.addEventListener('click', (event) => {
-    if (event.target === overlay) close();
-  });
-
-  document.body.appendChild(overlay);
-}
-
 function setFormBusy(form, isBusy) {
   if (!form) return;
 
@@ -974,6 +993,7 @@ const logoutButton = document.querySelector('#logout-button');
 const switchRestaurantButton = document.querySelector('#switch-restaurant-button');
 const restaurantScreen = document.querySelector('#restaurant-screen');
 const restaurantList = document.querySelector('#restaurant-list');
+const restaurantAccessNotice = document.querySelector('#restaurant-access-notice');
 const refreshRestaurantsBtn = document.querySelector('#refresh-restaurants');
 const restaurantContextLabel = document.querySelector('#restaurant-context-label');
 const restaurantTitle = document.querySelector('#restaurant-title');
