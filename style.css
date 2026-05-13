@@ -1237,6 +1237,51 @@ button:hover {
   line-height: 1;
 }
 
+.valued-client-modal {
+  background: rgba(15, 23, 42, 0.58);
+  backdrop-filter: blur(10px);
+}
+
+.valued-client-card {
+  width: min(560px, 100%);
+  border-color: rgba(20, 184, 166, 0.28);
+  box-shadow: 0 34px 90px rgba(15, 23, 42, 0.34);
+}
+
+.valued-client-icon {
+  width: 56px;
+  height: 56px;
+  display: grid;
+  place-items: center;
+  margin-bottom: 16px;
+  border-radius: 18px;
+  background: linear-gradient(135deg, rgba(20, 184, 166, 0.18), rgba(37, 99, 235, 0.14));
+  color: #0f766e;
+  font-size: 34px;
+  font-weight: 900;
+}
+
+.valued-client-copy {
+  margin-top: 18px;
+  padding: 16px;
+  border: 1px solid #dbeafe;
+  border-radius: 14px;
+  background: #f8fafc;
+}
+
+.valued-client-copy strong {
+  display: block;
+  color: #0f172a;
+  margin-bottom: 6px;
+}
+
+.valued-client-copy p {
+  margin: 0;
+  color: #475569;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
 .modal-metrics {
   margin-top: 18px;
   display: grid;

@@ -55,6 +55,15 @@ let apiAvailable = false;
 let adminUsers = [];
 let adminUserTotals = {};
 let restaurantLogoDataUrl = '';
+let machineAccess = {
+  tier: 'standard',
+  unlimited: false,
+  limit: 5,
+  machines: 0,
+  remaining: 5,
+  ownerEmail: '',
+  message: 'Standard FiltraCore accounts include up to 5 machines.'
+};
 
 function isBrainUser() {
   return String(currentUser?.email || '').trim().toLowerCase() === brainUserEmail
@@ -87,6 +96,42 @@ function getLogoMarkup(user, className = 'restaurant-card-logo') {
   }
 
   return `<span class="${className} logo-fallback">${escapeHTML(getRestaurantInitials(user))}</span>`;
+}
+
+function normalizeMachineAccess(value) {
+  const access = value && typeof value === 'object' ? value : {};
+  const limit = access.limit === null || access.limit === undefined ? null : Number(access.limit) || 5;
+  const machineCount = Number(access.machines);
+  const unlimited = Boolean(access.unlimited);
+
+  return {
+    tier: String(access.tier || (unlimited ? 'valued' : 'standard')),
+    unlimited,
+    limit,
+    machines: Number.isFinite(machineCount) ? machineCount : machines.length,
+    remaining: unlimited || limit === null
+      ? null
+      : Math.max(limit - (Number.isFinite(machineCount) ? machineCount : machines.length), 0),
+    ownerEmail: String(access.ownerEmail || '').trim().toLowerCase(),
+    message: String(access.message || (unlimited
+      ? 'As a valued early FiltraCore client, this workspace has unlimited machine access. Standard accounts include up to 5 machines.'
+      : 'Standard FiltraCore accounts include up to 5 machines.'))
+  };
+}
+
+function getActiveWorkspaceKey() {
+  return selectedTenantId || currentUser?.tenantId || currentUser?.email || 'workspace';
+}
+
+function machineLimitMessage() {
+  if (machineAccess.unlimited || machineAccess.limit === null) return '';
+  return `Standard FiltraCore accounts include up to ${machineAccess.limit} machines. Strat and Westgate have unlimited machine access as valued early clients.`;
+}
+
+function isAtMachineLimit() {
+  return !machineAccess.unlimited
+    && machineAccess.limit !== null
+    && machines.length >= machineAccess.limit;
 }
 
 function normalizeMachine(machine) {
@@ -193,8 +238,10 @@ function applyServerState(state) {
     maintenanceRecords,
     Array.isArray(state.maintenanceRecords) ? state.maintenanceRecords.map(normalizeMaintenanceRecord) : maintenanceRecords
   );
+  machineAccess = normalizeMachineAccess(state.machineAccess);
 
   saveLocalData();
+  maybeShowValuedClientNotice();
 }
 
 function updateAuthUI() {
@@ -612,6 +659,51 @@ function renderApp() {
   renderReports();
   renderAdminUsers();
   renderSmartSetup();
+}
+
+function maybeShowValuedClientNotice() {
+  if (!machineAccess.unlimited || !authToken) return;
+
+  const noticeKey = `filtracore_valued_client_notice_${getActiveWorkspaceKey()}`;
+  if (localStorage.getItem(noticeKey) === 'dismissed') return;
+
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay valued-client-modal is-open';
+  overlay.setAttribute('aria-hidden', 'false');
+  overlay.innerHTML = `
+    <div class="modal-card valued-client-card" role="dialog" aria-modal="true" aria-labelledby="valued-client-title">
+      <div class="valued-client-icon">∞</div>
+      <div class="modal-header">
+        <div>
+          <span class="section-label">Valued Client Access</span>
+          <h2 id="valued-client-title">Unlimited machines enabled</h2>
+          <p>${escapeHTML(machineAccess.message)}</p>
+        </div>
+        <button type="button" class="modal-close" aria-label="Close valued client notice">×</button>
+      </div>
+      <div class="valued-client-copy">
+        <strong>This workspace is not limited to ${machineAccess.limit || 5} machines.</strong>
+        <p>Strat and Westgate keep unlimited machine registration as early valued FiltraCore clients. New standard accounts are sized for small restaurants and include up to ${machineAccess.limit || 5} machines.</p>
+      </div>
+      <div class="modal-footer">
+        <button type="button">Got it</button>
+      </div>
+    </div>
+  `;
+
+  const close = () => {
+    localStorage.setItem(noticeKey, 'dismissed');
+    overlay.classList.remove('is-open');
+    overlay.remove();
+  };
+
+  overlay.querySelector('.modal-close')?.addEventListener('click', close);
+  overlay.querySelector('.modal-footer button')?.addEventListener('click', close);
+  overlay.addEventListener('click', (event) => {
+    if (event.target === overlay) close();
+  });
+
+  document.body.appendChild(overlay);
 }
 
 function setFormBusy(form, isBusy) {
@@ -3523,6 +3615,11 @@ if (machineForm) {
       model: document.querySelector('#machine-model').value.trim(),
       assetId: document.querySelector('#machine-asset-id').value.trim()
     };
+
+    if (isAtMachineLimit()) {
+      showSaveError(new Error(machineLimitMessage()));
+      return;
+    }
 
     if (apiAvailable) {
       try {

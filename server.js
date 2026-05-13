@@ -51,6 +51,8 @@ const demoEmail = normalizeEmail(process.env.BASTIDA_DEMO_EMAIL || 'demo@bastida
 const demoPassword = process.env.BASTIDA_DEMO_PASSWORD || 'LineOpsDemo1!'
 const syncSecret = String(process.env.BASTIDA_SYNC_SECRET || '').trim()
 const beoflowApiBaseURL = String(process.env.BEOFLOW_API_BASE_URL || '').trim().replace(/\/+$/, '')
+const standardMachineLimit = 5
+const unlimitedMachineClientEmails = new Set([stratAccountEmail, westgateAccountEmail])
 const unifiedAccountAliases = new Map([
   ['bastida01', brainEmail],
   ['westgate', westgateAccountEmail],
@@ -208,6 +210,10 @@ function mapAuthUser(row) {
 
 function isBrainUser(user) {
   return normalizeEmail(user?.email) === brainEmail || String(user?.role || '').toLowerCase() === 'superadmin'
+}
+
+function isUnlimitedMachineClient(email) {
+  return unlimitedMachineClientEmails.has(normalizeLoginIdentifier(email))
 }
 
 function mapAdminUser(row) {
@@ -943,6 +949,7 @@ async function getState(auth, db = pool) {
   const tenantId = auth.tenantId
 
   try {
+    const machineAccess = await getMachineAccess(client, tenantId)
     const machinesResult = await client.query(
       'SELECT * FROM machines WHERE tenant_id = $1 ORDER BY machine_id DESC',
       [tenantId]
@@ -1007,13 +1014,49 @@ async function getState(auth, db = pool) {
       machines: machinesResult.rows.map(mapMachine),
       inventory: inventoryResult.rows.map(mapInventory),
       filters,
-      maintenanceRecords
+      maintenanceRecords,
+      machineAccess
     }
   } finally {
     if (db === pool) {
       client.release()
     }
   }
+}
+
+async function getMachineAccess(db, tenantId) {
+  const machineResult = await db.query('SELECT COUNT(*)::int AS count FROM machines WHERE tenant_id = $1', [tenantId])
+  const ownerResult = await db.query(
+    'SELECT email FROM users WHERE tenant_id = $1 ORDER BY role = $2 DESC, created_at ASC',
+    [tenantId, 'admin']
+  )
+  const machineCount = toNumber(machineResult.rows[0]?.count)
+  const ownerEmails = ownerResult.rows.map(row => normalizeEmail(row.email)).filter(Boolean)
+  const unlimited = ownerEmails.some(isUnlimitedMachineClient)
+  const remaining = unlimited ? null : Math.max(standardMachineLimit - machineCount, 0)
+
+  return {
+    tier: unlimited ? 'valued' : 'standard',
+    unlimited,
+    limit: unlimited ? null : standardMachineLimit,
+    machines: machineCount,
+    remaining,
+    ownerEmail: ownerEmails[0] || '',
+    message: unlimited
+      ? 'As a valued early FiltraCore client, this workspace has unlimited machine access. Standard accounts include up to 5 machines.'
+      : `Standard FiltraCore accounts include up to ${standardMachineLimit} machines.`
+  }
+}
+
+async function assertCanCreateMachine(auth) {
+  const access = await getMachineAccess(pool, auth.tenantId)
+  if (access.unlimited || access.machines < standardMachineLimit) return access
+
+  const error = badRequest(
+    `Standard FiltraCore accounts include up to ${standardMachineLimit} machines. Strat and Westgate have unlimited machine access as valued early clients.`
+  )
+  error.statusCode = 403
+  throw error
 }
 
 async function sendState(req, res, status = 200) {
@@ -1439,6 +1482,8 @@ async function createMachine(req, res) {
     if (!name || !type || !location) {
       throw badRequest('Machine name, type, and location are required')
     }
+
+    await assertCanCreateMachine(req.auth)
 
     await pool.query(
       `
