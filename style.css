@@ -30,8 +30,11 @@ body.restaurant-required .app-layout {
   min-height: 100vh;
   display: grid;
   place-items: center;
-  padding: 24px;
-  background: linear-gradient(135deg, #f8fafc 0%, #eff6ff 52%, #ecfdf5 100%);
+  padding: 28px;
+  background:
+    radial-gradient(circle at 18% 18%, rgba(14, 165, 233, 0.16), transparent 28%),
+    radial-gradient(circle at 84% 20%, rgba(34, 197, 94, 0.18), transparent 30%),
+    linear-gradient(135deg, #f8fafc 0%, #eef6ff 50%, #edfdf6 100%);
 }
 
 .restaurant-shell {
@@ -42,7 +45,15 @@ body.restaurant-required .app-layout {
 
 .restaurant-heading {
   display: grid;
+  justify-items: center;
   gap: 8px;
+  padding: 30px 28px;
+  border: 1px solid rgba(219, 228, 239, 0.92);
+  border-radius: 28px;
+  background: rgba(255, 255, 255, 0.78);
+  box-shadow: 0 28px 80px rgba(15, 23, 42, 0.11);
+  text-align: center;
+  backdrop-filter: blur(20px);
 }
 
 .restaurant-heading h2 {
@@ -52,15 +63,48 @@ body.restaurant-required .app-layout {
 }
 
 .restaurant-heading p {
-  max-width: 640px;
+  max-width: 740px;
   color: #475569;
   font-size: 16px;
   line-height: 1.5;
+  font-weight: 700;
+}
+
+.restaurant-summary-grid {
+  width: min(620px, 100%);
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.restaurant-summary-grid div {
+  padding: 14px;
+  border: 1px solid rgba(219, 228, 239, 0.92);
+  border-radius: 18px;
+  background: #ffffff;
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.06);
+}
+
+.restaurant-summary-grid strong {
+  display: block;
+  color: #0f172a;
+  font-size: 24px;
+  line-height: 1;
+}
+
+.restaurant-summary-grid span {
+  display: block;
+  margin-top: 6px;
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 900;
+  text-transform: uppercase;
 }
 
 .restaurant-layout {
   display: grid;
-  grid-template-columns: minmax(0, 1.45fr) minmax(320px, 0.75fr);
+  grid-template-columns: minmax(0, 1.35fr) minmax(330px, 0.75fr);
   gap: 20px;
   align-items: start;
 }
@@ -68,7 +112,7 @@ body.restaurant-required .app-layout {
 .restaurant-panel {
   padding: 22px;
   border: 1px solid #dbe4ef;
-  border-radius: 18px;
+  border-radius: 24px;
   background: rgba(255, 255, 255, 0.92);
   box-shadow: 0 24px 70px rgba(15, 23, 42, 0.12);
   backdrop-filter: blur(16px);
@@ -76,20 +120,43 @@ body.restaurant-required .app-layout {
 
 .restaurant-list {
   display: grid;
-  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 14px;
 }
 
 .restaurant-card {
   width: 100%;
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
   gap: 16px;
-  align-items: center;
-  padding: 16px;
+  min-height: 250px;
+  align-content: space-between;
+  padding: 18px;
   border: 1px solid #e2e8f0;
-  border-radius: 16px;
-  background: #ffffff;
+  border-radius: 22px;
+  background:
+    linear-gradient(180deg, #ffffff, #f8fafc);
   text-align: left;
+  cursor: pointer;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+button.restaurant-card:not(.kpi-card):not(.module-kpi-card):not(.clickable-kpi) {
+  display: grid;
+  align-items: stretch;
+  justify-content: stretch;
+  padding: 18px;
+  border: 1px solid #e2e8f0;
+  border-radius: 22px;
+  background: linear-gradient(180deg, #ffffff, #f8fafc);
+  color: #0f172a;
+  box-shadow: none;
+}
+
+.restaurant-card-main {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+  min-width: 0;
 }
 
 .restaurant-card-logo,
@@ -120,23 +187,80 @@ body.restaurant-required .app-layout {
 
 .restaurant-card:hover {
   border-color: #22c55e;
-  box-shadow: 0 16px 34px rgba(15, 23, 42, 0.08);
+  box-shadow: 0 20px 42px rgba(15, 23, 42, 0.10);
+  transform: translateY(-2px);
+}
+
+button.restaurant-card:not(.kpi-card):not(.module-kpi-card):not(.clickable-kpi):hover {
+  border-color: #22c55e;
+  box-shadow: 0 20px 42px rgba(15, 23, 42, 0.10);
+  transform: translateY(-2px);
+}
+
+.restaurant-card-kicker {
+  display: inline-flex;
+  width: fit-content;
+  margin-bottom: 6px;
+  padding: 5px 9px;
+  border-radius: 999px;
+  background: #e0f2fe;
+  color: #075985;
+  font-size: 11px;
+  font-weight: 900;
+  text-transform: uppercase;
 }
 
 .restaurant-card h3 {
   color: #0f172a;
-  font-size: 17px;
+  font-size: 19px;
 }
 
 .restaurant-card p,
-.restaurant-card span {
+.restaurant-card span:not(.restaurant-card-kicker) {
   color: #64748b;
   font-size: 13px;
   line-height: 1.45;
   overflow-wrap: anywhere;
 }
 
-.restaurant-card strong {
+.restaurant-card-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.restaurant-card-metrics div {
+  padding: 10px;
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  background: #ffffff;
+}
+
+.restaurant-card-metrics strong {
+  display: block;
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
+  color: #0f172a;
+  font-size: 18px;
+}
+
+.restaurant-card-metrics span {
+  display: block;
+  margin-top: 4px;
+  font-size: 10px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.restaurant-card-footer {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: center;
+}
+
+.restaurant-card-footer > strong {
   min-width: max-content;
   padding: 9px 12px;
   border-radius: 999px;
@@ -148,6 +272,80 @@ body.restaurant-required .app-layout {
 .restaurant-form {
   display: grid;
   gap: 14px;
+}
+
+.restaurant-form .report-card-header {
+  margin-bottom: 2px;
+}
+
+.restaurant-form .report-card-header p {
+  margin-top: 4px;
+  color: #64748b;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.45;
+}
+
+.restaurant-form input,
+.restaurant-form select {
+  width: 100%;
+  min-height: 48px;
+  padding: 0 14px;
+  border: 1px solid #dbe4ef;
+  border-radius: 14px;
+  background: #ffffff;
+  color: #0f172a;
+  font: inherit;
+  font-weight: 700;
+  outline: none;
+  box-shadow: inset 0 1px 0 rgba(15, 23, 42, 0.02);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.restaurant-form input::placeholder {
+  color: #94a3b8;
+  font-weight: 600;
+}
+
+.restaurant-form input:focus,
+.restaurant-form select:focus {
+  border-color: #22c55e;
+  box-shadow: 0 0 0 4px rgba(34, 197, 94, 0.12);
+}
+
+.restaurant-form input[type="file"] {
+  display: flex;
+  align-items: center;
+  padding: 10px;
+  color: #64748b;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.restaurant-form input[type="file"]::file-selector-button {
+  min-height: 32px;
+  margin-right: 12px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 10px;
+  background: #e0f2fe;
+  color: #075985;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.restaurant-form small {
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.restaurant-form button[type="submit"] {
+  width: 100%;
+  min-height: 48px;
+  border-radius: 14px;
 }
 
 .restaurant-logo-preview {
@@ -176,25 +374,122 @@ body.restaurant-required .app-layout {
 }
 
 .login-panel {
-  width: min(100%, 390px);
+  width: min(100%, 500px);
   display: grid;
-  gap: 16px;
-  padding: 28px;
+  gap: 18px;
+  padding: 30px;
   border: 1px solid #dbe4ef;
-  border-radius: 12px;
-  background: #ffffff;
+  border-radius: 28px;
+  background: rgba(255, 255, 255, 0.88);
   box-shadow: 0 24px 70px rgba(15, 23, 42, 0.16);
+  backdrop-filter: blur(18px);
+}
+
+.login-heading {
+  display: grid;
+  gap: 8px;
+  text-align: center;
+}
+
+.login-heading p {
+  color: #64748b;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.5;
 }
 
 .login-logo {
   width: 68px;
   height: 68px;
   object-fit: contain;
+  justify-self: center;
 }
 
 .login-panel h2 {
-  font-size: 24px;
+  font-size: 34px;
   letter-spacing: 0;
+}
+
+.auth-mode-toggle {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  padding: 6px;
+  border: 1px solid #dbe4ef;
+  border-radius: 18px;
+  background: #f8fafc;
+}
+
+.auth-mode-btn {
+  min-height: 42px;
+  border: 0 !important;
+  border-radius: 13px;
+  background: transparent !important;
+  color: #64748b !important;
+  font-weight: 900;
+  box-shadow: none !important;
+  cursor: pointer;
+}
+
+.auth-mode-btn.active {
+  background: #ffffff !important;
+  color: #0f172a !important;
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.08) !important;
+}
+
+.auth-form {
+  display: grid;
+  gap: 14px;
+}
+
+.auth-form input,
+.auth-form select {
+  width: 100%;
+  min-height: 48px;
+  padding: 0 14px;
+  border: 1px solid #dbe4ef;
+  border-radius: 14px;
+  background: #ffffff;
+  color: #0f172a;
+  font: inherit;
+  outline: none;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.auth-form input:focus,
+.auth-form select:focus {
+  border-color: #22c55e;
+  box-shadow: 0 0 0 4px rgba(34, 197, 94, 0.12);
+}
+
+.auth-form[hidden] {
+  display: none;
+}
+
+.signup-form {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.signup-form .form-field:first-child,
+.signup-form .form-field:nth-child(2),
+.signup-form button,
+.signup-form .login-error {
+  grid-column: 1 / -1;
+}
+
+.auth-link-btn {
+  border: 0 !important;
+  background: transparent !important;
+  color: #64748b !important;
+  font-weight: 900;
+  box-shadow: none !important;
+  cursor: pointer;
+}
+
+.auth-link-btn:hover,
+.auth-link-btn:focus-visible {
+  color: #15803d;
+  outline: none;
 }
 
 .login-error {
@@ -4646,6 +4941,18 @@ button.clickable-kpi small::before,
 }
 
 @media (max-width: 900px) {
+  .login-panel,
+  .restaurant-heading,
+  .restaurant-panel {
+    padding: 20px;
+    border-radius: 22px;
+  }
+
+  .signup-form,
+  .restaurant-summary-grid {
+    grid-template-columns: 1fr;
+  }
+
   .restaurant-layout {
     grid-template-columns: 1fr;
   }

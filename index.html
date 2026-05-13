@@ -34,23 +34,77 @@
   </header>
 
   <section id="login-screen" class="login-screen" hidden>
-    <form id="login-form" class="login-panel">
+    <div class="login-panel">
       <img src="img/logo.png" alt="FiltraCore Logo" class="login-logo" />
-      <h2>Sign in to FiltraCore</h2>
-
-      <div class="form-field">
-        <label for="login-email">Cliente</label>
-        <input type="text" id="login-email" autocomplete="username" required />
+      <div class="login-heading">
+        <span class="section-label">Public SaaS platform</span>
+        <h2>FiltraCore</h2>
+        <p>Filter intelligence for restaurants, hospitality teams, casinos, retail, and facilities.</p>
       </div>
 
-      <div class="form-field">
-        <label for="login-password">Password</label>
-        <input type="password" id="login-password" autocomplete="current-password" required />
+      <div class="auth-mode-toggle" aria-label="Authentication mode">
+        <button type="button" id="auth-mode-signin" class="auth-mode-btn active">Sign In</button>
+        <button type="button" id="auth-mode-signup" class="auth-mode-btn">Create Account</button>
       </div>
 
-      <button id="login-submit" type="submit">Sign In</button>
-      <p id="login-error" class="login-error" role="alert"></p>
-    </form>
+      <form id="login-form" class="auth-form">
+        <div class="form-field">
+          <label for="login-email">Email or client login</label>
+          <input type="text" id="login-email" autocomplete="username" placeholder="demo@bastidasystems.io" required />
+        </div>
+
+        <div class="form-field">
+          <label for="login-password">Password</label>
+          <input type="password" id="login-password" autocomplete="current-password" placeholder="Password" required />
+        </div>
+
+        <button id="login-submit" type="submit">Sign In</button>
+        <p id="login-error" class="login-error" role="alert"></p>
+      </form>
+
+      <form id="signup-form" class="auth-form signup-form" hidden>
+        <div class="form-field">
+          <label for="signup-business-type">Account type</label>
+          <select id="signup-business-type">
+            <option>Restaurant</option>
+            <option>Hospitality</option>
+            <option>Casino</option>
+            <option>Retail</option>
+            <option>Warehouse</option>
+            <option>Other</option>
+          </select>
+        </div>
+
+        <div class="form-field">
+          <label for="signup-business-name">Business name</label>
+          <input type="text" id="signup-business-name" autocomplete="organization" placeholder="Example: Northstar Kitchen" required />
+        </div>
+
+        <div class="form-field">
+          <label for="signup-full-name">Full name</label>
+          <input type="text" id="signup-full-name" autocomplete="name" placeholder="Operations lead" required />
+        </div>
+
+        <div class="form-field">
+          <label for="signup-email">Business email</label>
+          <input type="email" id="signup-email" autocomplete="email" placeholder="name@business.com" required />
+        </div>
+
+        <div class="form-field">
+          <label for="signup-password">Password</label>
+          <input type="password" id="signup-password" autocomplete="new-password" placeholder="8+ characters" minlength="8" required />
+        </div>
+
+        <div class="form-field">
+          <label for="signup-confirm-password">Confirm password</label>
+          <input type="password" id="signup-confirm-password" autocomplete="new-password" placeholder="Repeat password" minlength="8" required />
+        </div>
+
+        <button id="signup-submit" type="submit">Create Account</button>
+        <button type="button" id="back-to-login" class="auth-link-btn">Back to Login</button>
+        <p id="signup-error" class="login-error" role="alert"></p>
+      </form>
+    </div>
   </section>
 
   <section id="restaurant-screen" class="restaurant-screen" hidden>
@@ -59,7 +113,21 @@
         <img src="img/logo.png" alt="FiltraCore Logo" class="login-logo" />
         <span class="section-label">Bastida Systems Cerebro</span>
         <h2>Choose Restaurant</h2>
-        <p>Select which restaurant or business workspace you want to operate.</p>
+        <p>Select the business workspace you want to operate. Each restaurant opens with its own machines, filters, inventory, maintenance history, and reports.</p>
+        <div class="restaurant-summary-grid" aria-label="Workspace summary">
+          <div>
+            <strong id="restaurant-total-workspaces">0</strong>
+            <span>Workspaces</span>
+          </div>
+          <div>
+            <strong id="restaurant-total-machines">0</strong>
+            <span>Machines</span>
+          </div>
+          <div>
+            <strong id="restaurant-total-filters">0</strong>
+            <span>Filters</span>
+          </div>
+        </div>
       </div>
 
       <div class="restaurant-layout">
@@ -68,6 +136,7 @@
             <div>
               <span class="section-label">Available Workspaces</span>
               <h3>Restaurants</h3>
+              <p>Open the exact operation you want to manage.</p>
             </div>
             <button type="button" id="refresh-restaurants" class="secondary-btn">Refresh</button>
           </div>
@@ -81,6 +150,7 @@
             <div>
               <span class="section-label">New Workspace</span>
               <h3>Add Restaurant</h3>
+              <p>Create a branded client dashboard with sample data.</p>
             </div>
           </div>
 

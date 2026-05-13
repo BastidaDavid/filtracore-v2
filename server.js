@@ -1232,14 +1232,17 @@ app.post('/api/auth/signup', async (req, res) => {
       fullName: req.body.fullName,
       email: req.body.email,
       password: req.body.password,
-      businessType: req.body.businessType
+      businessType: req.body.businessType,
+      logoDataUrl: req.body.logoDataUrl,
+      identityLabel: req.body.identityLabel
     })
     await syncAccountToBeoflow({
       businessName: req.body.businessName,
       fullName: req.body.fullName,
       email: req.body.email,
       password: req.body.password,
-      businessType: req.body.businessType
+      businessType: req.body.businessType,
+      identityLabel: req.body.identityLabel
     })
 
     res.status(201).json(session)

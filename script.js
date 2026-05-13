@@ -300,6 +300,24 @@ function setAuthSession(session) {
   updateAuthUI();
 }
 
+function setAuthMode(mode) {
+  const isSignup = mode === 'signup';
+
+  if (loginForm) loginForm.hidden = isSignup;
+  if (signupForm) signupForm.hidden = !isSignup;
+  authModeSigninBtn?.classList.toggle('active', !isSignup);
+  authModeSignupBtn?.classList.toggle('active', isSignup);
+
+  if (loginError) loginError.textContent = '';
+  if (signupError) signupError.textContent = '';
+
+  if (isSignup) {
+    signupBusinessNameInput?.focus();
+  } else {
+    loginEmailInput?.focus();
+  }
+}
+
 function clearAuthSession() {
   authToken = '';
   currentUser = null;
@@ -372,6 +390,19 @@ async function signIn(email, password) {
     clearSelectedRestaurant();
     await loadServerData();
   }
+  renderApp();
+}
+
+async function signUpPublicAccount(payload) {
+  const session = await apiRequest('/api/auth/signup', {
+    method: 'POST',
+    auth: false,
+    body: JSON.stringify(payload)
+  });
+
+  setAuthSession(session);
+  clearSelectedRestaurant();
+  await loadServerData();
   renderApp();
 }
 
@@ -484,6 +515,9 @@ function renderRestaurantSelector() {
   if (!restaurantList) return;
 
   restaurantList.innerHTML = '';
+  if (restaurantTotalWorkspaces) restaurantTotalWorkspaces.textContent = '0';
+  if (restaurantTotalMachines) restaurantTotalMachines.textContent = '0';
+  if (restaurantTotalFilters) restaurantTotalFilters.textContent = '0';
 
   if (!isBrainUser()) {
     restaurantList.innerHTML = '<p class="empty-state">Sign in with Bastida Systems to choose a restaurant.</p>';
@@ -495,19 +529,45 @@ function renderRestaurantSelector() {
     return;
   }
 
+  const totals = adminUsers.reduce((summary, user) => ({
+    workspaces: summary.workspaces + 1,
+    machines: summary.machines + (Number(user.machines) || 0),
+    filters: summary.filters + (Number(user.filters) || 0)
+  }), { workspaces: 0, machines: 0, filters: 0 });
+
+  if (restaurantTotalWorkspaces) restaurantTotalWorkspaces.textContent = totals.workspaces;
+  if (restaurantTotalMachines) restaurantTotalMachines.textContent = totals.machines;
+  if (restaurantTotalFilters) restaurantTotalFilters.textContent = totals.filters;
+
   adminUsers.forEach(user => {
     const button = document.createElement('button');
     button.type = 'button';
     button.className = 'restaurant-card';
     button.dataset.tenantId = user.tenantId;
+    const isCurrent = String(user.tenantId) === String(selectedTenantId);
+    const label = user.identityLabel || user.role || 'Workspace';
+    const lastActivity = user.lastSessionAt
+      ? new Date(user.lastSessionAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+      : 'No recent session';
+
     button.innerHTML = `
-      ${getLogoMarkup(user)}
-      <div>
-        <h3>${escapeHTML(user.businessName || 'Restaurant')}</h3>
-        <p>${escapeHTML(user.identityLabel || user.fullName || 'Admin')} · ${escapeHTML(user.email || '')}</p>
-        <span>${Number(user.machines) || 0} machines · ${Number(user.filters) || 0} filters · ${Number(user.maintenanceRecords) || 0} maintenance records</span>
+      <div class="restaurant-card-main">
+        ${getLogoMarkup(user)}
+        <div>
+          <span class="restaurant-card-kicker">${escapeHTML(label)}</span>
+          <h3>${escapeHTML(user.businessName || 'Restaurant')}</h3>
+          <p>${escapeHTML(user.fullName || 'Admin')} · ${escapeHTML(user.email || '')}</p>
+        </div>
       </div>
-      <strong>${String(user.tenantId) === String(selectedTenantId) ? 'Current' : 'Open'}</strong>
+      <div class="restaurant-card-metrics" aria-label="Workspace metrics">
+        <div><strong>${Number(user.machines) || 0}</strong><span>Machines</span></div>
+        <div><strong>${Number(user.filters) || 0}</strong><span>Filters</span></div>
+        <div><strong>${Number(user.maintenanceRecords) || 0}</strong><span>Service</span></div>
+      </div>
+      <div class="restaurant-card-footer">
+        <span>Last activity: ${escapeHTML(lastActivity)}</span>
+        <strong>${isCurrent ? 'Current' : 'Open'}</strong>
+      </div>
     `;
     restaurantList.appendChild(button);
   });
@@ -720,15 +780,30 @@ function showSaveError(error) {
 }
 
 const loginForm = document.querySelector('#login-form');
+const signupForm = document.querySelector('#signup-form');
+const authModeSigninBtn = document.querySelector('#auth-mode-signin');
+const authModeSignupBtn = document.querySelector('#auth-mode-signup');
+const backToLoginBtn = document.querySelector('#back-to-login');
 const loginEmailInput = document.querySelector('#login-email');
 const loginPasswordInput = document.querySelector('#login-password');
 const loginError = document.querySelector('#login-error');
 const loginSubmitButton = document.querySelector('#login-submit');
+const signupBusinessTypeInput = document.querySelector('#signup-business-type');
+const signupBusinessNameInput = document.querySelector('#signup-business-name');
+const signupFullNameInput = document.querySelector('#signup-full-name');
+const signupEmailInput = document.querySelector('#signup-email');
+const signupPasswordInput = document.querySelector('#signup-password');
+const signupConfirmPasswordInput = document.querySelector('#signup-confirm-password');
+const signupError = document.querySelector('#signup-error');
+const signupSubmitButton = document.querySelector('#signup-submit');
 const logoutButton = document.querySelector('#logout-button');
 const switchRestaurantButton = document.querySelector('#switch-restaurant-button');
 const restaurantScreen = document.querySelector('#restaurant-screen');
 const restaurantList = document.querySelector('#restaurant-list');
 const refreshRestaurantsBtn = document.querySelector('#refresh-restaurants');
+const restaurantTotalWorkspaces = document.querySelector('#restaurant-total-workspaces');
+const restaurantTotalMachines = document.querySelector('#restaurant-total-machines');
+const restaurantTotalFilters = document.querySelector('#restaurant-total-filters');
 const restaurantForm = document.querySelector('#restaurant-form');
 const restaurantBusinessNameInput = document.querySelector('#restaurant-business-name');
 const restaurantIdentityLabelInput = document.querySelector('#restaurant-identity-label');
@@ -3532,6 +3607,56 @@ if (loginForm) {
       if (loginSubmitButton) {
         loginSubmitButton.disabled = false;
         loginSubmitButton.textContent = 'Sign In';
+      }
+    }
+  });
+}
+
+authModeSigninBtn?.addEventListener('click', () => setAuthMode('signin'));
+authModeSignupBtn?.addEventListener('click', () => setAuthMode('signup'));
+backToLoginBtn?.addEventListener('click', () => setAuthMode('signin'));
+
+if (signupForm) {
+  signupForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+
+    if (signupError) {
+      signupError.textContent = '';
+    }
+
+    const password = signupPasswordInput?.value || '';
+    const confirmPassword = signupConfirmPasswordInput?.value || '';
+
+    if (password !== confirmPassword) {
+      if (signupError) signupError.textContent = 'Passwords do not match.';
+      signupConfirmPasswordInput?.focus();
+      return;
+    }
+
+    try {
+      if (signupSubmitButton) {
+        signupSubmitButton.disabled = true;
+        signupSubmitButton.textContent = 'Creating...';
+      }
+
+      await signUpPublicAccount({
+        businessType: signupBusinessTypeInput?.value || 'Restaurant',
+        businessName: signupBusinessNameInput?.value.trim() || '',
+        fullName: signupFullNameInput?.value.trim() || '',
+        email: signupEmailInput?.value.trim() || '',
+        password
+      });
+    } catch (error) {
+      if (signupError) {
+        signupError.textContent = error.message || 'Unable to create account.';
+      }
+      if (signupPasswordInput) signupPasswordInput.value = '';
+      if (signupConfirmPasswordInput) signupConfirmPasswordInput.value = '';
+      signupPasswordInput?.focus();
+    } finally {
+      if (signupSubmitButton) {
+        signupSubmitButton.disabled = false;
+        signupSubmitButton.textContent = 'Create Account';
       }
     }
   });
