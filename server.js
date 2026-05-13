@@ -360,7 +360,7 @@ async function ensureSchema() {
     `
     INSERT INTO tenants (name, slug)
     VALUES ($1, $2)
-    ON CONFLICT (slug) DO UPDATE SET name = EXCLUDED.name
+    ON CONFLICT (slug) DO UPDATE SET slug = EXCLUDED.slug
     RETURNING tenant_id
     `,
     [tenantName, defaultTenantSlug]
@@ -546,19 +546,31 @@ async function seedSampleTenantData(db, tenantId, businessName = 'FiltraCore Dem
   )
 }
 
-async function createPublicAccount({ businessName, fullName, email, password, businessType }) {
+async function createPublicAccount({
+  businessName,
+  fullName,
+  email,
+  password,
+  businessType,
+  allowUsername = false,
+  minimumPasswordLength = 8,
+  role = 'admin',
+  createSessionToken = true
+}) {
   const cleanBusinessName = String(businessName || '').trim()
   const cleanFullName = String(fullName || '').trim()
   const cleanEmail = normalizeEmail(email)
   const cleanPassword = String(password || '')
   const normalizedBusinessType = normalizeBusinessType(businessType)
 
-  if (!cleanBusinessName || !cleanFullName || !isValidEmail(cleanEmail)) {
-    throw badRequest('Business name, full name, and a valid email are required')
+  if (!cleanBusinessName || !cleanFullName || !cleanEmail || (!allowUsername && !isValidEmail(cleanEmail))) {
+    throw badRequest(allowUsername
+      ? 'Business name, owner name, and login are required'
+      : 'Business name, full name, and a valid email are required')
   }
 
-  if (cleanPassword.length < 8) {
-    throw badRequest('Password must be at least 8 characters')
+  if (cleanPassword.length < minimumPasswordLength) {
+    throw badRequest(`Password must be at least ${minimumPasswordLength} characters`)
   }
 
   const client = await pool.connect()
@@ -588,7 +600,7 @@ async function createPublicAccount({ businessName, fullName, email, password, bu
       VALUES ($1, $2, $3, $4, $5)
       RETURNING user_id, tenant_id, email, name, role
       `,
-      [tenantId, cleanEmail, cleanFullName, hashPassword(cleanPassword), 'admin']
+      [tenantId, cleanEmail, cleanFullName, hashPassword(cleanPassword), role]
     )
 
     await seedSampleTenantData(client, tenantId, cleanBusinessName)
@@ -599,7 +611,7 @@ async function createPublicAccount({ businessName, fullName, email, password, bu
       tenant_name: tenantResult.rows[0].tenant_name,
       business_type: normalizedBusinessType
     }
-    const token = await createSession(user.user_id)
+    const token = createSessionToken ? await createSession(user.user_id) : ''
 
     return {
       token,
@@ -854,6 +866,22 @@ async function requireAuth(req, res, next) {
 
     req.auth = mapAuthUser(result.rows[0])
 
+    const requestedTenantId = toNumber(req.get('x-filtracore-tenant-id'), 0)
+    if (requestedTenantId && isBrainUser(req.auth)) {
+      const tenantResult = await pool.query(
+        'SELECT tenant_id, name FROM tenants WHERE tenant_id = $1 LIMIT 1',
+        [requestedTenantId]
+      )
+
+      if (tenantResult.rowCount === 0) {
+        throw badRequest('Selected restaurant was not found')
+      }
+
+      req.auth.homeTenantId = req.auth.tenantId
+      req.auth.tenantId = Number(tenantResult.rows[0].tenant_id)
+      req.auth.tenantName = tenantResult.rows[0].name
+    }
+
     pool
       .query('UPDATE sessions SET last_used_at = NOW() WHERE token_hash = $1', [hashToken(token)])
       .catch(error => console.warn('Failed to update session activity', error))
@@ -986,68 +1014,102 @@ app.delete('/api/auth/account', requireAuth, async (req, res) => {
   }
 })
 
+async function getAdminUsersPayload() {
+  const result = await pool.query(
+    `
+    SELECT
+      users.user_id,
+      users.tenant_id,
+      users.email,
+      users.name,
+      users.role,
+      users.created_at,
+      tenants.name AS tenant_name,
+      (
+        SELECT COUNT(*)::int
+        FROM machines
+        WHERE machines.tenant_id = tenants.tenant_id
+      ) AS machines_count,
+      (
+        SELECT COUNT(*)::int
+        FROM inventory
+        WHERE inventory.tenant_id = tenants.tenant_id
+      ) AS inventory_count,
+      (
+        SELECT COUNT(*)::int
+        FROM filters
+        WHERE filters.tenant_id = tenants.tenant_id
+      ) AS filters_count,
+      (
+        SELECT COUNT(*)::int
+        FROM maintenance
+        WHERE maintenance.tenant_id = tenants.tenant_id
+      ) AS maintenance_count,
+      (
+        SELECT MAX(sessions.last_used_at)
+        FROM sessions
+        WHERE sessions.user_id = users.user_id
+      ) AS last_session_at
+    FROM users
+    INNER JOIN tenants ON tenants.tenant_id = users.tenant_id
+    ORDER BY users.created_at DESC
+    LIMIT 500
+    `
+  )
+
+  const users = result.rows.map(mapAdminUser)
+
+  return {
+    ok: true,
+    totals: {
+      users: users.length,
+      businesses: new Set(users.map(user => user.tenantId)).size,
+      demoUsers: users.filter(user => normalizeEmail(user.email) === demoEmail).length,
+      brainUsers: users.filter(user => isBrainUser(user)).length
+    },
+    users
+  }
+}
+
 app.get('/api/admin/users', requireAuth, async (req, res) => {
   try {
     if (!isBrainUser(req.auth)) {
       return res.status(403).json({ error: 'Only Bastida Systems can view FiltraCore users' })
     }
 
-    const result = await pool.query(
-      `
-      SELECT
-        users.user_id,
-        users.tenant_id,
-        users.email,
-        users.name,
-        users.role,
-        users.created_at,
-        tenants.name AS tenant_name,
-        (
-          SELECT COUNT(*)::int
-          FROM machines
-          WHERE machines.tenant_id = tenants.tenant_id
-        ) AS machines_count,
-        (
-          SELECT COUNT(*)::int
-          FROM inventory
-          WHERE inventory.tenant_id = tenants.tenant_id
-        ) AS inventory_count,
-        (
-          SELECT COUNT(*)::int
-          FROM filters
-          WHERE filters.tenant_id = tenants.tenant_id
-        ) AS filters_count,
-        (
-          SELECT COUNT(*)::int
-          FROM maintenance
-          WHERE maintenance.tenant_id = tenants.tenant_id
-        ) AS maintenance_count,
-        (
-          SELECT MAX(sessions.last_used_at)
-          FROM sessions
-          WHERE sessions.user_id = users.user_id
-        ) AS last_session_at
-      FROM users
-      INNER JOIN tenants ON tenants.tenant_id = users.tenant_id
-      ORDER BY users.created_at DESC
-      LIMIT 500
-      `
-    )
-
-    const users = result.rows.map(mapAdminUser)
-
-    res.json({
-      ok: true,
-      totals: {
-        users: users.length,
-        businesses: new Set(users.map(user => user.tenantId)).size,
-        demoUsers: users.filter(user => normalizeEmail(user.email) === demoEmail).length,
-        brainUsers: users.filter(user => isBrainUser(user)).length
-      },
-      users
-    })
+    res.json(await getAdminUsersPayload())
   } catch (error) {
     handleError(res, error, 'Failed to load users')
+  }
+})
+
+app.post('/api/admin/users', requireAuth, async (req, res) => {
+  try {
+    if (!isBrainUser(req.auth)) {
+      return res.status(403).json({ error: 'Only Bastida Systems can create FiltraCore users' })
+    }
+
+    const session = await createPublicAccount({
+      businessName: req.body.businessName,
+      fullName: req.body.fullName,
+      email: req.body.email || req.body.username,
+      password: req.body.password,
+      businessType: req.body.businessType,
+      allowUsername: true,
+      minimumPasswordLength: 6,
+      createSessionToken: false
+    })
+    const payload = await getAdminUsersPayload()
+    const user = payload.users.find(item => item.id === session.user.id) || session.user
+
+    res.status(201).json({
+      ok: true,
+      user,
+      totals: payload.totals,
+      users: payload.users
+    })
+  } catch (error) {
+    handleError(res, error, 'Failed to create user')
   }
 })
 

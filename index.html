@@ -28,6 +28,7 @@
 
     <div id="account-panel" class="account-panel" hidden>
       <span id="account-name"></span>
+      <button id="switch-restaurant-button" type="button" class="secondary-btn" hidden>Switch Restaurant</button>
       <button id="logout-button" type="button">Sign Out</button>
     </div>
   </header>
@@ -50,6 +51,76 @@
       <button id="login-submit" type="submit">Sign In</button>
       <p id="login-error" class="login-error" role="alert"></p>
     </form>
+  </section>
+
+  <section id="restaurant-screen" class="restaurant-screen" hidden>
+    <div class="restaurant-shell">
+      <div class="restaurant-heading">
+        <img src="img/logo.png" alt="FiltraCore Logo" class="login-logo" />
+        <span class="section-label">Bastida Systems Cerebro</span>
+        <h2>Choose Restaurant</h2>
+        <p>Select which restaurant or business workspace you want to operate.</p>
+      </div>
+
+      <div class="restaurant-layout">
+        <div class="restaurant-panel">
+          <div class="report-card-header">
+            <div>
+              <span class="section-label">Available Workspaces</span>
+              <h3>Restaurants</h3>
+            </div>
+            <button type="button" id="refresh-restaurants" class="secondary-btn">Refresh</button>
+          </div>
+          <div id="restaurant-list" class="restaurant-list">
+            <p class="empty-state">Loading restaurants...</p>
+          </div>
+        </div>
+
+        <form id="restaurant-form" class="restaurant-panel restaurant-form">
+          <div class="report-card-header">
+            <div>
+              <span class="section-label">New Workspace</span>
+              <h3>Add Restaurant</h3>
+            </div>
+          </div>
+
+          <div class="form-field">
+            <label for="restaurant-business-name">Restaurant / Business</label>
+            <input type="text" id="restaurant-business-name" autocomplete="organization" required />
+          </div>
+
+          <div class="form-field">
+            <label for="restaurant-owner-name">Owner / Admin Name</label>
+            <input type="text" id="restaurant-owner-name" autocomplete="name" required />
+          </div>
+
+          <div class="form-field">
+            <label for="restaurant-login">Login</label>
+            <input type="text" id="restaurant-login" autocomplete="username" required />
+          </div>
+
+          <div class="form-field">
+            <label for="restaurant-password">Temporary Password</label>
+            <input type="password" id="restaurant-password" autocomplete="new-password" minlength="6" required />
+          </div>
+
+          <div class="form-field">
+            <label for="restaurant-business-type">Business Type</label>
+            <select id="restaurant-business-type">
+              <option>Restaurant</option>
+              <option>Hospitality</option>
+              <option>Casino</option>
+              <option>Retail</option>
+              <option>Warehouse</option>
+              <option>Other</option>
+            </select>
+          </div>
+
+          <button id="restaurant-submit" type="submit">Add and Open</button>
+          <p id="restaurant-status" class="login-error" role="alert"></p>
+        </form>
+      </div>
+    </div>
   </section>
 
   <main class="app-layout">

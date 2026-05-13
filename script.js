@@ -46,9 +46,11 @@ const maintenanceRecords = loadStoredArray('filtracore_maintenance');
 const API_BASE_URL = window.FILTRACORE_API_BASE_URL || '';
 const authTokenKey = 'filtracore_auth_token';
 const authUserKey = 'filtracore_auth_user';
+const selectedTenantKey = 'filtracore_selected_tenant_id';
 const brainUserEmail = 'bastidasystems@gmail.com';
 let authToken = localStorage.getItem(authTokenKey) || '';
 let currentUser = loadStoredObject(authUserKey, null);
+let selectedTenantId = localStorage.getItem(selectedTenantKey) || '';
 let apiAvailable = false;
 let adminUsers = [];
 let adminUserTotals = {};
@@ -56,6 +58,14 @@ let adminUserTotals = {};
 function isBrainUser() {
   return String(currentUser?.email || '').trim().toLowerCase() === brainUserEmail
     || String(currentUser?.role || '').trim().toLowerCase() === 'superadmin';
+}
+
+function getSelectedRestaurant() {
+  return adminUsers.find(user => String(user.tenantId) === String(selectedTenantId)) || null;
+}
+
+function needsRestaurantSelection() {
+  return Boolean(authToken && isBrainUser() && !getSelectedRestaurant());
 }
 
 function normalizeMachine(machine) {
@@ -169,14 +179,22 @@ function applyServerState(state) {
 function updateAuthUI() {
   const isSignedIn = Boolean(authToken);
   const loginScreen = document.querySelector('#login-screen');
+  const restaurantScreen = document.querySelector('#restaurant-screen');
   const accountPanel = document.querySelector('#account-panel');
   const accountName = document.querySelector('#account-name');
   const accountsNav = document.querySelector('#accounts-nav');
+  const switchRestaurantButton = document.querySelector('#switch-restaurant-button');
+  const requiresRestaurant = needsRestaurantSelection();
 
   document.body.classList.toggle('auth-required', !isSignedIn);
+  document.body.classList.toggle('restaurant-required', requiresRestaurant);
 
   if (loginScreen) {
     loginScreen.hidden = isSignedIn;
+  }
+
+  if (restaurantScreen) {
+    restaurantScreen.hidden = !requiresRestaurant;
   }
 
   if (accountPanel) {
@@ -184,11 +202,18 @@ function updateAuthUI() {
   }
 
   if (accountName) {
-    accountName.textContent = currentUser?.name || currentUser?.email || '';
+    const selectedRestaurant = getSelectedRestaurant();
+    accountName.textContent = selectedRestaurant
+      ? `${currentUser?.name || currentUser?.email || ''} · ${selectedRestaurant.businessName}`
+      : currentUser?.name || currentUser?.email || '';
   }
 
   if (accountsNav) {
     accountsNav.hidden = !isSignedIn || !isBrainUser();
+  }
+
+  if (switchRestaurantButton) {
+    switchRestaurantButton.hidden = !isSignedIn || !isBrainUser();
   }
 }
 
@@ -213,8 +238,10 @@ function clearAuthSession() {
   apiAvailable = false;
   adminUsers = [];
   adminUserTotals = {};
+  selectedTenantId = '';
   localStorage.removeItem(authTokenKey);
   localStorage.removeItem(authUserKey);
+  localStorage.removeItem(selectedTenantKey);
   clearLocalOperationalData();
   updateAuthUI();
 }
@@ -228,6 +255,10 @@ async function apiRequest(path, options = {}) {
 
   if (auth && authToken) {
     headers.Authorization = `Bearer ${authToken}`;
+  }
+
+  if (auth && authToken && selectedTenantId) {
+    headers['X-FiltraCore-Tenant-Id'] = selectedTenantId;
   }
 
   const response = await fetch(`${API_BASE_URL}${path}`, {
@@ -261,8 +292,18 @@ async function signIn(email, password) {
   });
 
   setAuthSession(session);
-  await loadServerData();
-  await loadAdminUsers();
+  if (isBrainUser()) {
+    await loadAdminUsers();
+    if (getSelectedRestaurant()) {
+      await loadServerData();
+    } else {
+      clearLocalOperationalData();
+      updateAuthUI();
+    }
+  } else {
+    clearSelectedRestaurant();
+    await loadServerData();
+  }
   renderApp();
 }
 
@@ -349,11 +390,74 @@ function renderAdminUsers() {
   });
 }
 
+function setRestaurantStatus(message, tone = '') {
+  if (!restaurantStatus) return;
+
+  restaurantStatus.textContent = message;
+  restaurantStatus.dataset.tone = tone;
+}
+
+function clearSelectedRestaurant() {
+  selectedTenantId = '';
+  localStorage.removeItem(selectedTenantKey);
+  clearLocalOperationalData();
+}
+
+function validateSelectedRestaurant() {
+  if (selectedTenantId && !getSelectedRestaurant()) {
+    clearSelectedRestaurant();
+  }
+}
+
+function renderRestaurantSelector() {
+  if (!restaurantList) return;
+
+  restaurantList.innerHTML = '';
+
+  if (!isBrainUser()) {
+    restaurantList.innerHTML = '<p class="empty-state">Sign in with Bastida Systems to choose a restaurant.</p>';
+    return;
+  }
+
+  if (!adminUsers.length) {
+    restaurantList.innerHTML = '<p class="empty-state">No restaurants loaded yet.</p>';
+    return;
+  }
+
+  adminUsers.forEach(user => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'restaurant-card';
+    button.dataset.tenantId = user.tenantId;
+    button.innerHTML = `
+      <div>
+        <h3>${escapeHTML(user.businessName || 'Restaurant')}</h3>
+        <p>${escapeHTML(user.fullName || 'Admin')} · ${escapeHTML(user.email || '')}</p>
+        <span>${Number(user.machines) || 0} machines · ${Number(user.filters) || 0} filters · ${Number(user.maintenanceRecords) || 0} maintenance records</span>
+      </div>
+      <strong>${String(user.tenantId) === String(selectedTenantId) ? 'Current' : 'Open'}</strong>
+    `;
+    restaurantList.appendChild(button);
+  });
+}
+
+async function openRestaurant(tenantId) {
+  selectedTenantId = String(tenantId || '');
+  localStorage.setItem(selectedTenantKey, selectedTenantId);
+  updateAuthUI();
+  clearLocalOperationalData();
+  await loadServerData();
+  renderApp();
+  showSection('dashboard');
+  setActiveNavById('dashboard');
+}
+
 async function loadAdminUsers() {
   if (!isBrainUser()) {
     adminUsers = [];
     adminUserTotals = {};
     renderAdminUsers();
+    renderRestaurantSelector();
     return;
   }
 
@@ -363,11 +467,58 @@ async function loadAdminUsers() {
     const payload = await apiRequest('/api/admin/users');
     adminUsers = Array.isArray(payload.users) ? payload.users : [];
     adminUserTotals = payload.totals || {};
+    validateSelectedRestaurant();
     renderAdminUsers();
+    renderRestaurantSelector();
+    updateAuthUI();
     setAccountsStatus(adminUsers.length ? 'Accounts synced from Render.' : 'No accounts yet.', 'success');
   } catch (error) {
     console.error(error);
     setAccountsStatus(error.message || 'Unable to load accounts.', 'error');
+    renderRestaurantSelector();
+    updateAuthUI();
+  }
+}
+
+async function createRestaurantAccount() {
+  if (!restaurantForm) return;
+
+  const payload = {
+    businessName: restaurantBusinessNameInput?.value.trim() || '',
+    fullName: restaurantOwnerNameInput?.value.trim() || '',
+    email: restaurantLoginInput?.value.trim() || '',
+    password: restaurantPasswordInput?.value || '',
+    businessType: restaurantBusinessTypeInput?.value || 'Restaurant'
+  };
+
+  if (!payload.businessName || !payload.fullName || !payload.email || payload.password.length < 6) {
+    setRestaurantStatus('Business, owner, login, and a 6+ character password are required.', 'error');
+    return;
+  }
+
+  setRestaurantStatus('Creating restaurant workspace...');
+  setFormBusy(restaurantForm, true);
+  if (restaurantSubmitButton) restaurantSubmitButton.textContent = 'Creating...';
+
+  try {
+    const response = await apiRequest('/api/admin/users', {
+      method: 'POST',
+      body: JSON.stringify(payload)
+    });
+
+    adminUsers = Array.isArray(response.users) ? response.users : adminUsers;
+    adminUserTotals = response.totals || adminUserTotals;
+    restaurantForm.reset();
+    renderAdminUsers();
+    renderRestaurantSelector();
+    setRestaurantStatus('Restaurant created. Opening workspace...', 'success');
+    await openRestaurant(response.user?.tenantId);
+  } catch (error) {
+    console.error(error);
+    setRestaurantStatus(error.message || 'Unable to create restaurant.', 'error');
+  } finally {
+    setFormBusy(restaurantForm, false);
+    if (restaurantSubmitButton) restaurantSubmitButton.textContent = 'Add and Open';
   }
 }
 
@@ -408,6 +559,18 @@ const loginPasswordInput = document.querySelector('#login-password');
 const loginError = document.querySelector('#login-error');
 const loginSubmitButton = document.querySelector('#login-submit');
 const logoutButton = document.querySelector('#logout-button');
+const switchRestaurantButton = document.querySelector('#switch-restaurant-button');
+const restaurantScreen = document.querySelector('#restaurant-screen');
+const restaurantList = document.querySelector('#restaurant-list');
+const refreshRestaurantsBtn = document.querySelector('#refresh-restaurants');
+const restaurantForm = document.querySelector('#restaurant-form');
+const restaurantBusinessNameInput = document.querySelector('#restaurant-business-name');
+const restaurantOwnerNameInput = document.querySelector('#restaurant-owner-name');
+const restaurantLoginInput = document.querySelector('#restaurant-login');
+const restaurantPasswordInput = document.querySelector('#restaurant-password');
+const restaurantBusinessTypeInput = document.querySelector('#restaurant-business-type');
+const restaurantSubmitButton = document.querySelector('#restaurant-submit');
+const restaurantStatus = document.querySelector('#restaurant-status');
 const machineForm = document.querySelector('#machine-form');
 const machinesList = document.querySelector('#machines-list');
 const machineSearchInput = document.querySelector('#machine-search');
@@ -3211,9 +3374,40 @@ if (logoutButton) {
   });
 }
 
+if (switchRestaurantButton) {
+  switchRestaurantButton.addEventListener('click', async () => {
+    clearSelectedRestaurant();
+    await loadAdminUsers();
+    updateAuthUI();
+    renderApp();
+  });
+}
+
 if (refreshAccountsBtn) {
   refreshAccountsBtn.addEventListener('click', async () => {
     await loadAdminUsers();
+  });
+}
+
+if (refreshRestaurantsBtn) {
+  refreshRestaurantsBtn.addEventListener('click', async () => {
+    await loadAdminUsers();
+  });
+}
+
+if (restaurantList) {
+  restaurantList.addEventListener('click', async (e) => {
+    const card = e.target.closest('.restaurant-card');
+    if (!card) return;
+
+    await openRestaurant(card.dataset.tenantId);
+  });
+}
+
+if (restaurantForm) {
+  restaurantForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    await createRestaurantAccount();
   });
 }
 
@@ -3781,8 +3975,14 @@ async function initializeApp() {
   updateAuthUI();
 
   if (authToken) {
-    await loadServerData();
     await loadAdminUsers();
+    if (isBrainUser()) {
+      if (getSelectedRestaurant()) {
+        await loadServerData();
+      }
+    } else {
+      await loadServerData();
+    }
   }
 
   renderApp();
