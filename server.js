@@ -43,6 +43,9 @@ const passwordKeyLength = 64
 const passwordDigest = 'sha512'
 const sessionDays = toNumber(process.env.FILTRACORE_SESSION_DAYS, 30)
 const defaultTenantSlug = 'default'
+const publicBusinessTypes = new Set(['Restaurant', 'Hospitality', 'Casino', 'Retail', 'Warehouse', 'Other'])
+const demoEmail = 'demo@filtracore.io'
+const demoPassword = 'FiltraCoreDemo1!'
 
 function toNullableNumber(value) {
   if (value === null || value === undefined || value === '') return null
@@ -84,6 +87,24 @@ function normalizeEmail(email) {
 
 function normalizeLoginIdentifier(value) {
   return normalizeEmail(value)
+}
+
+function isValidEmail(email) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(email || '').trim())
+}
+
+function normalizeBusinessType(value) {
+  const match = [...publicBusinessTypes].find(type => type.toLowerCase() === String(value || '').trim().toLowerCase())
+  return match || 'Other'
+}
+
+function slugify(value) {
+  return String(value || 'business')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '')
+    .slice(0, 48) || 'business'
 }
 
 function hashPassword(password, salt = crypto.randomBytes(16).toString('hex')) {
@@ -355,6 +376,7 @@ async function ensureSchema() {
   `)
 
   await seedAdminUser(defaultTenantId)
+  await seedDemoUser()
 }
 
 async function seedAdminUser(defaultTenantId) {
@@ -392,6 +414,214 @@ async function seedAdminUser(defaultTenantId) {
       [hashPassword(password), name, defaultTenantId, email]
     )
   }
+}
+
+async function ensureUniqueTenantSlug(db, businessName) {
+  const baseSlug = slugify(businessName)
+  let slug = baseSlug
+  let suffix = 2
+
+  while (true) {
+    const existing = await db.query('SELECT tenant_id FROM tenants WHERE slug = $1 LIMIT 1', [slug])
+    if (existing.rowCount === 0) return slug
+
+    slug = `${baseSlug}-${suffix}`
+    suffix += 1
+  }
+}
+
+async function seedSampleTenantData(db, tenantId, businessName = 'FiltraCore Demo') {
+  const existing = await db.query('SELECT machine_id FROM machines WHERE tenant_id = $1 LIMIT 1', [tenantId])
+  if (existing.rowCount > 0) return
+
+  const machineRows = [
+    ['Main Kitchen Ice Machine', 'Ice Machine', 'Kitchen Line', 'Culinary', 'Manitowoc', 'IYT0450A', 'FC-ICE-001'],
+    ['Coffee Bar Brewer', 'Coffee Brewer', 'Cafe Station', 'Beverage', 'Bunn', 'ICB Twin', 'FC-COF-002'],
+    ['Soda Fountain Bank', 'Beverage System', 'Service Bar', 'Front of House', 'Cornelius', 'Viper', 'FC-SODA-003']
+  ]
+  const machineIds = []
+
+  for (const row of machineRows) {
+    const result = await db.query(
+      `
+      INSERT INTO machines (tenant_id, name, type, location, department, brand, model, asset_id)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+      RETURNING machine_id
+      `,
+      [tenantId, ...row]
+    )
+    machineIds.push(Number(result.rows[0].machine_id))
+  }
+
+  const inventoryRows = [
+    ['Carbon Block 10"', 'Ice Machine Filter', 8, 42.5, 3, 6],
+    ['Scale Control Cartridge', 'Coffee Filter', 5, 36, 2, 3],
+    ['Sediment Pre-filter', 'Water System Filter', 12, 18.75, 4, 6],
+    ['High Flow Beverage Cartridge', 'Soda Filter', 6, 54, 2, 4]
+  ]
+  const inventoryIds = []
+
+  for (const row of inventoryRows) {
+    const result = await db.query(
+      `
+      INSERT INTO inventory (tenant_id, name, category, stock, unit_cost, reorder_level, life_months)
+      VALUES ($1, $2, $3, $4, $5, $6, $7)
+      RETURNING inventory_id
+      `,
+      [tenantId, ...row]
+    )
+    inventoryIds.push(Number(result.rows[0].inventory_id))
+  }
+
+  const today = new Date()
+  const installed60DaysAgo = new Date(today)
+  installed60DaysAgo.setDate(today.getDate() - 60)
+  const installed95DaysAgo = new Date(today)
+  installed95DaysAgo.setDate(today.getDate() - 95)
+
+  const filterRows = [
+    [machineIds[0], inventoryIds[0], 62, 6, installed60DaysAgo],
+    [machineIds[1], inventoryIds[1], 47, 3, installed95DaysAgo],
+    [machineIds[2], inventoryIds[3], 58, 4, installed60DaysAgo]
+  ]
+  const filterIds = []
+
+  for (const [machineId, inventoryId, psi, lifeMonths, installedDate] of filterRows) {
+    const installedAt = toDateString(installedDate)
+    const result = await db.query(
+      `
+      INSERT INTO filters (tenant_id, machine_id, inventory_id, psi, life_months, installed_at, due_date)
+      VALUES ($1, $2, $3, $4, $5, $6, $7)
+      RETURNING filter_id
+      `,
+      [tenantId, machineId, inventoryId, psi, lifeMonths, installedAt, addMonths(installedAt, lifeMonths)]
+    )
+    filterIds.push(Number(result.rows[0].filter_id))
+
+    await db.query(
+      'UPDATE inventory SET stock = GREATEST(stock - 1, 0) WHERE inventory_id = $1 AND tenant_id = $2',
+      [inventoryId, tenantId]
+    )
+  }
+
+  await db.query(
+    `
+    INSERT INTO maintenance (tenant_id, machine_id, filter_id, maintenance_type, notes, current_psi, corrected_psi, performed_at)
+    VALUES
+      ($1, $2, $3, 'PSI Inspection', $4, 44, 47, NOW() - INTERVAL '7 days'),
+      ($1, $5, $6, 'Preventive Check', $7, 59, 62, NOW() - INTERVAL '14 days')
+    `,
+    [
+      tenantId,
+      machineIds[1],
+      filterIds[1],
+      `${businessName} coffee station PSI corrected after inspection.`,
+      machineIds[0],
+      filterIds[0],
+      'Routine ice machine filter check completed.'
+    ]
+  )
+}
+
+async function createPublicAccount({ businessName, fullName, email, password, businessType }) {
+  const cleanBusinessName = String(businessName || '').trim()
+  const cleanFullName = String(fullName || '').trim()
+  const cleanEmail = normalizeEmail(email)
+  const cleanPassword = String(password || '')
+  const normalizedBusinessType = normalizeBusinessType(businessType)
+
+  if (!cleanBusinessName || !cleanFullName || !isValidEmail(cleanEmail)) {
+    throw badRequest('Business name, full name, and a valid email are required')
+  }
+
+  if (cleanPassword.length < 8) {
+    throw badRequest('Password must be at least 8 characters')
+  }
+
+  const client = await pool.connect()
+
+  try {
+    await client.query('BEGIN')
+
+    const duplicate = await client.query('SELECT user_id FROM users WHERE email = $1 LIMIT 1', [cleanEmail])
+    if (duplicate.rowCount > 0) {
+      throw badRequest('An account already exists for this email')
+    }
+
+    const slug = await ensureUniqueTenantSlug(client, cleanBusinessName)
+    const tenantResult = await client.query(
+      `
+      INSERT INTO tenants (name, slug)
+      VALUES ($1, $2)
+      RETURNING tenant_id, name AS tenant_name
+      `,
+      [cleanBusinessName, slug]
+    )
+    const tenantId = Number(tenantResult.rows[0].tenant_id)
+
+    const userResult = await client.query(
+      `
+      INSERT INTO users (tenant_id, email, name, password_hash, role)
+      VALUES ($1, $2, $3, $4, $5)
+      RETURNING user_id, tenant_id, email, name, role
+      `,
+      [tenantId, cleanEmail, cleanFullName, hashPassword(cleanPassword), 'admin']
+    )
+
+    await seedSampleTenantData(client, tenantId, cleanBusinessName)
+    await client.query('COMMIT')
+
+    const user = {
+      ...userResult.rows[0],
+      tenant_name: tenantResult.rows[0].tenant_name,
+      business_type: normalizedBusinessType
+    }
+    const token = await createSession(user.user_id)
+
+    return {
+      token,
+      user: mapAuthUser(user)
+    }
+  } catch (error) {
+    await client.query('ROLLBACK')
+
+    if (error.code === '23505') {
+      throw badRequest('An account already exists for this email')
+    }
+
+    throw error
+  } finally {
+    client.release()
+  }
+}
+
+async function seedDemoUser() {
+  const existing = await pool.query(
+    `
+    SELECT users.user_id, users.tenant_id
+    FROM users
+    WHERE users.email = $1
+    LIMIT 1
+    `,
+    [demoEmail]
+  )
+
+  if (existing.rowCount === 0) {
+    await createPublicAccount({
+      businessName: 'Northstar Hospitality',
+      fullName: 'App Review Demo',
+      email: demoEmail,
+      password: demoPassword,
+      businessType: 'Hospitality'
+    })
+    return
+  }
+
+  await pool.query(
+    'UPDATE users SET password_hash = $1, name = $2 WHERE email = $3',
+    [hashPassword(demoPassword), 'App Review Demo', demoEmail]
+  )
+  await seedSampleTenantData(pool, Number(existing.rows[0].tenant_id), 'Northstar Hospitality')
 }
 
 async function getState(auth, db = pool) {
@@ -619,6 +849,22 @@ app.post('/api/auth/login', async (req, res) => {
   }
 })
 
+app.post('/api/auth/signup', async (req, res) => {
+  try {
+    const session = await createPublicAccount({
+      businessName: req.body.businessName,
+      fullName: req.body.fullName,
+      email: req.body.email,
+      password: req.body.password,
+      businessType: req.body.businessType
+    })
+
+    res.status(201).json(session)
+  } catch (error) {
+    handleError(res, error, 'Failed to create account')
+  }
+})
+
 app.get('/api/auth/me', requireAuth, (req, res) => {
   res.json({ user: req.auth })
 })
@@ -634,6 +880,36 @@ app.post('/api/auth/logout', requireAuth, async (req, res) => {
     res.json({ ok: true })
   } catch (error) {
     handleError(res, error, 'Failed to sign out')
+  }
+})
+
+app.delete('/api/auth/account', requireAuth, async (req, res) => {
+  const client = await pool.connect()
+  let didBegin = false
+
+  try {
+    if (normalizeEmail(req.auth.email) === demoEmail) {
+      const token = getBearerToken(req)
+      if (token) {
+        await client.query('DELETE FROM sessions WHERE token_hash = $1', [hashToken(token)])
+      }
+      res.json({ ok: true, demo: true })
+      return
+    }
+
+    await client.query('BEGIN')
+    didBegin = true
+    await client.query('DELETE FROM sessions WHERE user_id = $1', [req.auth.id])
+    await client.query('DELETE FROM tenants WHERE tenant_id = $1', [req.auth.tenantId])
+    await client.query('COMMIT')
+    res.json({ ok: true })
+  } catch (error) {
+    if (didBegin) {
+      await client.query('ROLLBACK')
+    }
+    handleError(res, error, 'Failed to delete account')
+  } finally {
+    client.release()
   }
 })
 
