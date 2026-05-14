@@ -110,10 +110,18 @@ Returns all data needed to render the dashboard.
 
 ```json
 {
+  "facilities": [],
   "machines": [],
   "inventory": [],
   "filters": [],
-  "maintenanceRecords": []
+  "maintenanceRecords": [],
+  "technicians": [],
+  "inspections": [],
+  "inventoryUsage": [],
+  "suppliers": [],
+  "supplierProducts": [],
+  "priceHistory": [],
+  "purchaseOrders": []
 }
 ```
 
@@ -135,6 +143,11 @@ Request:
   "department": "Beverage Ops",
   "brand": "Scotsman",
   "model": "HID312A",
+  "serialNumber": "SN-123",
+  "building": "Casino",
+  "floor": "1",
+  "zone": "Main Bar",
+  "exactLocation": "North wall behind bar",
   "assetId": "ICE-001"
 }
 ```
@@ -177,6 +190,9 @@ Request:
 {
   "name": "Ice Filter Pro",
   "category": "Ice",
+  "reorderNumber": "EV9781-12",
+  "filterType": "PENTAIR EVERPURE",
+  "vendorName": "Supplier",
   "stock": 5,
   "unitCost": 42.5,
   "reorderLevel": 2,
@@ -185,6 +201,82 @@ Request:
 ```
 
 Required: `name`, `category`.
+
+Returns: full app state.
+
+## Suppliers And Procurement
+
+### GET `/api/suppliers`
+
+Returns suppliers only. Compatibility alias: `GET /suppliers`.
+
+### POST `/api/suppliers`
+
+Request:
+
+```json
+{
+  "name": "Sysco",
+  "contact": "Account Manager",
+  "email": "orders@supplier.com",
+  "phone": "(702) 555-0100",
+  "website": "https://supplier.com",
+  "category": "Foodservice Distributor",
+  "notes": "Delivery window and contract notes",
+  "status": "active"
+}
+```
+
+Required: `name`. `status` can be `active` or `inactive`.
+
+Returns: full app state.
+
+### GET `/api/supplier-products`
+
+Returns supplier-to-inventory price records only. Compatibility alias: `GET /supplier-products`.
+
+### POST `/api/supplier-products`
+
+Creates or updates a supplier price for an existing inventory item and records `priceHistory`.
+
+```json
+{
+  "supplierId": 1,
+  "inventoryId": 1,
+  "supplierSku": "EV9781-12-SYS",
+  "currentPrice": 42,
+  "notes": "Latest quote"
+}
+```
+
+Required: `supplierId`, `inventoryId`, `currentPrice`.
+
+Returns: full app state.
+
+### GET `/api/purchase-orders`
+
+Returns purchase orders with line items. Compatibility alias: `GET /purchase-orders`.
+
+### POST `/api/purchase-orders`
+
+Creates an initial purchase order in `Draft`, `Sent`, `Received`, or `Cancelled` status.
+
+```json
+{
+  "supplierId": 1,
+  "status": "Draft",
+  "expectedDate": "2026-05-20",
+  "notes": "Restock for low inventory",
+  "items": [
+    {
+      "supplierProductId": 1,
+      "inventoryId": 1,
+      "quantity": 3,
+      "unitPrice": 42
+    }
+  ]
+}
+```
 
 Returns: full app state.
 
@@ -205,6 +297,9 @@ Request:
   "machineId": 1,
   "productId": 1,
   "psi": 55,
+  "psiMin": 50,
+  "psiMax": 70,
+  "filterQuantity": 2,
   "lifeMonths": 6,
   "installedAt": "2026-05-08",
   "dueDate": "2026-11-08"
@@ -218,6 +313,46 @@ Returns: full app state.
 ### PATCH `/api/filters/:id/psi`
 
 Updates the current PSI and logs a maintenance record.
+
+## Smart Import
+
+### POST `/api/import/preview`
+
+Detects filter sheet rows from pasted text, CSV/TSV, spreadsheets, PDFs, or images sent as a data URL. If `OPENAI_API_KEY` is configured, image/PDF extraction can use AI vision/file understanding; otherwise the endpoint falls back to deterministic text and spreadsheet parsing.
+
+Request:
+
+```json
+{
+  "fileName": "waterfilters.tsv",
+  "mimeType": "text/plain",
+  "text": "Venue\tMachine\tReOrder#\tFilter Type\tFILTER AMOUNT\nPT'S\tIce Machine\t300-05830\tPENTAIR EVERPURE\t3"
+}
+```
+
+Response:
+
+```json
+{
+  "sourceName": "waterfilters.tsv",
+  "sourceType": "text/plain",
+  "aiUsed": false,
+  "records": [
+    {
+      "venue": "PT'S",
+      "machine": "Ice Machine",
+      "reorderNumber": "300-05830",
+      "filterType": "PENTAIR EVERPURE",
+      "quantity": 3
+    }
+  ],
+  "warnings": []
+}
+```
+
+### POST `/api/import/apply`
+
+Creates or updates facilities, machines, inventory catalog items, and installed filter records from previewed rows. Returns full app state plus `importSummary`.
 
 Request:
 

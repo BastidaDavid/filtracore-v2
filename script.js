@@ -43,6 +43,14 @@ const machines = loadStoredArray('filtracore_machines');
 const filters = loadStoredArray('filtracore_filters');
 const inventory = loadStoredArray('filtracore_inventory');
 const maintenanceRecords = loadStoredArray('filtracore_maintenance');
+const facilities = loadStoredArray('filtracore_facilities');
+const technicians = loadStoredArray('filtracore_technicians');
+const inspections = loadStoredArray('filtracore_inspections');
+const inventoryUsage = loadStoredArray('filtracore_inventory_usage');
+const suppliers = loadStoredArray('filtracore_suppliers');
+const supplierProducts = loadStoredArray('filtracore_supplier_products');
+const priceHistory = loadStoredArray('filtracore_price_history');
+const purchaseOrders = loadStoredArray('filtracore_purchase_orders');
 const API_BASE_URL = window.FILTRACORE_API_BASE_URL || '';
 const authTokenKey = 'filtracore_auth_token';
 const authUserKey = 'filtracore_auth_user';
@@ -153,13 +161,22 @@ function isAtMachineLimit() {
 function normalizeMachine(machine) {
   return {
     id: Number(machine.id ?? machine.machine_id),
+    facilityId: machine.facilityId ?? machine.facility_id ?? null,
     name: machine.name || '',
     type: machine.type || '',
+    category: machine.category || machine.type || '',
     location: machine.location || '',
     department: machine.department || '',
     brand: machine.brand || '',
     model: machine.model || '',
+    serialNumber: machine.serialNumber ?? machine.serial_number ?? '',
+    building: machine.building || '',
+    floor: machine.floor || '',
+    zone: machine.zone || '',
+    exactLocation: machine.exactLocation ?? machine.exact_location ?? machine.location ?? '',
     assetId: machine.assetId ?? machine.asset_id ?? '',
+    qrPayload: machine.qrPayload ?? machine.qr_payload ?? '',
+    healthStatus: machine.healthStatus ?? machine.health_status ?? '',
     createdAt: machine.createdAt ?? machine.created_at ?? null
   };
 }
@@ -171,6 +188,10 @@ function normalizeInventoryItem(item) {
     id: Number(item.id ?? item.inventory_id),
     name: item.name || '',
     category,
+    reorderNumber: item.reorderNumber ?? item.reorder_number ?? '',
+    filterType: item.filterType ?? item.filter_type ?? category,
+    vendorName: item.vendorName ?? item.vendor_name ?? '',
+    vendorContact: item.vendorContact ?? item.vendor_contact ?? '',
     stock: Number(item.stock) || 0,
     unitCost: Number(item.unitCost ?? item.unit_cost ?? item.cost) || 0,
     reorderLevel: Number(item.reorderLevel ?? item.reorder_level) || 0,
@@ -189,6 +210,12 @@ function normalizeFilter(filter) {
     machineId: Number(filter.machineId ?? filter.machine_id),
     productId: productId === null || productId === undefined || productId === '' ? null : Number(productId),
     productName,
+    reorderNumber: filter.reorderNumber ?? filter.reorder_number ?? '',
+    filterType: filter.filterType ?? filter.filter_type ?? category,
+    filterQuantity: Number(filter.filterQuantity ?? filter.filter_quantity) || 1,
+    psiMin: filter.psiMin ?? filter.psi_min ?? null,
+    psiMax: filter.psiMax ?? filter.psi_max ?? null,
+    vendorName: filter.vendorName ?? filter.vendor_name ?? '',
     cost: Number(filter.cost ?? filter.unit_cost) || 0,
     lifeMonths: Number(filter.lifeMonths ?? filter.life_months) || getDefaultLifeMonths(category),
     psi: filter.psi === null || filter.psi === undefined || filter.psi === '' ? null : Number(filter.psi),
@@ -206,8 +233,14 @@ function normalizeMaintenanceRecord(record) {
 
   return {
     id: Number(record.id ?? record.maintenance_id),
+    logId: record.logId ?? record.log_id ?? null,
     machineId: Number(record.machineId ?? record.machine_id),
     filterId: filterId === null || filterId === undefined || filterId === '' ? null : Number(filterId),
+    technicianId: record.technicianId ?? record.technician_id ?? null,
+    technicianName: record.technicianName ?? record.technician_name ?? '',
+    inspectionStatus: record.inspectionStatus ?? record.inspection_status ?? '',
+    priority: record.priority || '',
+    nextDueDate: record.nextDueDate ?? record.next_due_date ?? null,
     type: record.type ?? record.maintenance_type ?? 'General',
     date: record.date ?? record.performed_at ?? null,
     notes: record.notes || '',
@@ -222,6 +255,143 @@ function normalizeMaintenanceRecord(record) {
   };
 }
 
+function normalizeFacility(facility) {
+  return {
+    id: Number(facility.id ?? facility.facility_id),
+    name: facility.name || '',
+    venueType: facility.venueType ?? facility.venue_type ?? '',
+    building: facility.building || '',
+    address: facility.address || '',
+    createdAt: facility.createdAt ?? facility.created_at ?? null
+  };
+}
+
+function normalizeTechnician(technician) {
+  return {
+    id: Number(technician.id ?? technician.technician_id),
+    name: technician.name || '',
+    email: technician.email || '',
+    phone: technician.phone || '',
+    role: technician.role || 'Technician',
+    active: technician.active !== false,
+    createdAt: technician.createdAt ?? technician.created_at ?? null
+  };
+}
+
+function normalizeInspection(inspection) {
+  return {
+    id: Number(inspection.id ?? inspection.inspection_id),
+    machineId: inspection.machineId ?? inspection.machine_id ?? null,
+    filterId: inspection.filterId ?? inspection.filter_id ?? null,
+    technicianId: inspection.technicianId ?? inspection.technician_id ?? null,
+    inspectionType: inspection.inspectionType ?? inspection.inspection_type ?? 'General Inspection',
+    result: inspection.result || '',
+    notes: inspection.notes || '',
+    psiReading: inspection.psiReading ?? inspection.psi_reading ?? null,
+    inspectedAt: inspection.inspectedAt ?? inspection.inspected_at ?? null,
+    createdAt: inspection.createdAt ?? inspection.created_at ?? null
+  };
+}
+
+function normalizeInventoryUsage(usage) {
+  return {
+    inventoryId: usage.inventoryId ?? usage.inventory_id ?? null,
+    totalUsed: Number(usage.totalUsed ?? usage.total_used) || 0,
+    events: Number(usage.events) || 0,
+    lastUsedAt: usage.lastUsedAt ?? usage.last_used_at ?? null
+  };
+}
+
+function normalizeSupplier(supplier) {
+  return {
+    id: Number(supplier.id ?? supplier.supplier_id),
+    name: supplier.name || '',
+    contact: supplier.contact ?? supplier.contactName ?? supplier.contact_name ?? '',
+    email: supplier.email || '',
+    phone: supplier.phone || '',
+    website: supplier.website || '',
+    category: supplier.category || '',
+    notes: supplier.notes || '',
+    status: String(supplier.status || 'active').toLowerCase(),
+    createdAt: supplier.createdAt ?? supplier.created_at ?? null,
+    updatedAt: supplier.updatedAt ?? supplier.updated_at ?? null
+  };
+}
+
+function normalizeSupplierProduct(product) {
+  const currentPrice = Number(product.currentPrice ?? product.current_price ?? product.price) || 0;
+  const rawLastPrice = product.lastPrice ?? product.last_price;
+  const lastPrice = rawLastPrice === null || rawLastPrice === undefined || rawLastPrice === '' ? null : Number(rawLastPrice) || 0;
+  const variationPercent = lastPrice && lastPrice > 0
+    ? ((currentPrice - lastPrice) / lastPrice) * 100
+    : Number(product.variationPercent ?? product.variation_percent) || 0;
+
+  return {
+    id: Number(product.id ?? product.supplier_product_id),
+    supplierId: Number(product.supplierId ?? product.supplier_id),
+    inventoryId: Number(product.inventoryId ?? product.inventory_id),
+    supplierName: product.supplierName ?? product.supplier_name ?? '',
+    inventoryName: product.inventoryName ?? product.inventory_name ?? '',
+    inventoryCategory: product.inventoryCategory ?? product.inventory_category ?? '',
+    stock: Number(product.stock) || 0,
+    reorderLevel: Number(product.reorderLevel ?? product.reorder_level) || 0,
+    supplierSku: product.supplierSku ?? product.supplier_sku ?? '',
+    productName: product.productName ?? product.product_name ?? product.inventoryName ?? product.inventory_name ?? '',
+    currentPrice,
+    lastPrice,
+    variationPercent,
+    direction: product.direction || (variationPercent > 0 ? 'up' : variationPercent < 0 ? 'down' : 'flat'),
+    lastUpdatedAt: product.lastUpdatedAt ?? product.last_updated_at ?? null,
+    notes: product.notes || '',
+    status: String(product.status || 'active').toLowerCase(),
+    createdAt: product.createdAt ?? product.created_at ?? null,
+    updatedAt: product.updatedAt ?? product.updated_at ?? null
+  };
+}
+
+function normalizePriceHistoryEntry(entry) {
+  return {
+    id: Number(entry.id ?? entry.price_history_id),
+    supplierProductId: Number(entry.supplierProductId ?? entry.supplier_product_id),
+    supplierId: Number(entry.supplierId ?? entry.supplier_id),
+    inventoryId: Number(entry.inventoryId ?? entry.inventory_id),
+    price: Number(entry.price) || 0,
+    previousPrice: entry.previousPrice ?? entry.previous_price ?? null,
+    changedAt: entry.changedAt ?? entry.changed_at ?? null,
+    source: entry.source || '',
+    notes: entry.notes || ''
+  };
+}
+
+function normalizePurchaseOrder(order) {
+  return {
+    id: Number(order.id ?? order.purchase_order_id),
+    supplierId: order.supplierId ?? order.supplier_id ?? null,
+    supplierName: order.supplierName ?? order.supplier_name ?? '',
+    poNumber: order.poNumber ?? order.po_number ?? '',
+    status: order.status || 'Draft',
+    expectedDate: order.expectedDate ?? order.expected_date ?? null,
+    sentAt: order.sentAt ?? order.sent_at ?? null,
+    receivedAt: order.receivedAt ?? order.received_at ?? null,
+    notes: order.notes || '',
+    totalAmount: Number(order.totalAmount ?? order.total_amount) || 0,
+    createdAt: order.createdAt ?? order.created_at ?? null,
+    updatedAt: order.updatedAt ?? order.updated_at ?? null,
+    items: Array.isArray(order.items) ? order.items.map(item => ({
+      id: Number(item.id ?? item.purchase_order_item_id),
+      purchaseOrderId: Number(item.purchaseOrderId ?? item.purchase_order_id),
+      inventoryId: item.inventoryId ?? item.inventory_id ?? null,
+      supplierProductId: item.supplierProductId ?? item.supplier_product_id ?? null,
+      inventoryName: item.inventoryName ?? item.inventory_name ?? '',
+      quantity: Number(item.quantity) || 0,
+      unitPrice: Number(item.unitPrice ?? item.unit_price) || 0,
+      lineTotal: Number(item.lineTotal ?? item.line_total) || 0,
+      receivedQuantity: Number(item.receivedQuantity ?? item.received_quantity) || 0,
+      notes: item.notes || ''
+    })) : []
+  };
+}
+
 function replaceCollection(collection, nextItems) {
   collection.splice(0, collection.length, ...nextItems);
 }
@@ -231,6 +401,14 @@ function saveLocalData() {
   localStorage.setItem('filtracore_filters', JSON.stringify(filters));
   localStorage.setItem('filtracore_inventory', JSON.stringify(inventory));
   localStorage.setItem('filtracore_maintenance', JSON.stringify(maintenanceRecords));
+  localStorage.setItem('filtracore_facilities', JSON.stringify(facilities));
+  localStorage.setItem('filtracore_technicians', JSON.stringify(technicians));
+  localStorage.setItem('filtracore_inspections', JSON.stringify(inspections));
+  localStorage.setItem('filtracore_inventory_usage', JSON.stringify(inventoryUsage));
+  localStorage.setItem('filtracore_suppliers', JSON.stringify(suppliers));
+  localStorage.setItem('filtracore_supplier_products', JSON.stringify(supplierProducts));
+  localStorage.setItem('filtracore_price_history', JSON.stringify(priceHistory));
+  localStorage.setItem('filtracore_purchase_orders', JSON.stringify(purchaseOrders));
 }
 
 function clearLocalOperationalData() {
@@ -238,10 +416,26 @@ function clearLocalOperationalData() {
   replaceCollection(filters, []);
   replaceCollection(inventory, []);
   replaceCollection(maintenanceRecords, []);
+  replaceCollection(facilities, []);
+  replaceCollection(technicians, []);
+  replaceCollection(inspections, []);
+  replaceCollection(inventoryUsage, []);
+  replaceCollection(suppliers, []);
+  replaceCollection(supplierProducts, []);
+  replaceCollection(priceHistory, []);
+  replaceCollection(purchaseOrders, []);
   localStorage.removeItem('filtracore_machines');
   localStorage.removeItem('filtracore_filters');
   localStorage.removeItem('filtracore_inventory');
   localStorage.removeItem('filtracore_maintenance');
+  localStorage.removeItem('filtracore_facilities');
+  localStorage.removeItem('filtracore_technicians');
+  localStorage.removeItem('filtracore_inspections');
+  localStorage.removeItem('filtracore_inventory_usage');
+  localStorage.removeItem('filtracore_suppliers');
+  localStorage.removeItem('filtracore_supplier_products');
+  localStorage.removeItem('filtracore_price_history');
+  localStorage.removeItem('filtracore_purchase_orders');
 }
 
 function applyServerState(state) {
@@ -250,10 +444,21 @@ function applyServerState(state) {
   replaceCollection(machines, Array.isArray(state.machines) ? state.machines.map(normalizeMachine) : machines);
   replaceCollection(inventory, Array.isArray(state.inventory) ? state.inventory.map(normalizeInventoryItem) : inventory);
   replaceCollection(filters, Array.isArray(state.filters) ? state.filters.map(normalizeFilter) : filters);
+  replaceCollection(facilities, Array.isArray(state.facilities) ? state.facilities.map(normalizeFacility) : facilities);
   replaceCollection(
     maintenanceRecords,
     Array.isArray(state.maintenanceRecords) ? state.maintenanceRecords.map(normalizeMaintenanceRecord) : maintenanceRecords
   );
+  replaceCollection(technicians, Array.isArray(state.technicians) ? state.technicians.map(normalizeTechnician) : technicians);
+  replaceCollection(inspections, Array.isArray(state.inspections) ? state.inspections.map(normalizeInspection) : inspections);
+  replaceCollection(inventoryUsage, Array.isArray(state.inventoryUsage) ? state.inventoryUsage.map(normalizeInventoryUsage) : inventoryUsage);
+  replaceCollection(suppliers, Array.isArray(state.suppliers) ? state.suppliers.map(normalizeSupplier) : suppliers);
+  replaceCollection(
+    supplierProducts,
+    Array.isArray(state.supplierProducts) ? state.supplierProducts.map(normalizeSupplierProduct) : supplierProducts
+  );
+  replaceCollection(priceHistory, Array.isArray(state.priceHistory) ? state.priceHistory.map(normalizePriceHistoryEntry) : priceHistory);
+  replaceCollection(purchaseOrders, Array.isArray(state.purchaseOrders) ? state.purchaseOrders.map(normalizePurchaseOrder) : purchaseOrders);
   machineAccess = normalizeMachineAccess(state.machineAccess);
 
   saveLocalData();
@@ -585,13 +790,13 @@ function renderRestaurantSelector() {
   }
 
   if (restaurantTitle) {
-    restaurantTitle.textContent = isBrain ? 'Choose Restaurant' : 'Choose a restaurant';
+    restaurantTitle.textContent = isBrain ? 'Choose Restaurant' : 'Choose restaurant';
   }
 
   if (restaurantSubtitle) {
     restaurantSubtitle.textContent = isBrain
       ? 'Select the business workspace you want to operate. Each restaurant opens with its own machines, filters, inventory, maintenance history, and reports.'
-      : `Select the restaurant, business, or location under ${clientAccountLabel}. FiltraCore opens the correct workspace after you choose one.`;
+      : `Each card is a restaurant or venue under ${clientAccountLabel}. Open one to see only its machines, filters, inventory, and maintenance.`;
   }
 
   renderRestaurantAccessNotice(isBrain, clientAccountLabel, workspaces);
@@ -662,9 +867,14 @@ function renderRestaurantSelector() {
           ${getLogoMarkup(user)}
           <div>
             <h3>${escapeHTML(user.businessName || currentUser?.tenantName || 'Restaurant')}</h3>
-            <p>${escapeHTML(user.identityLabel || 'Restaurant')} · ${index === 0 ? 'Primary workspace' : 'Workspace'}</p>
+            <p>${escapeHTML(user.identityLabel || 'Restaurant')} · ${index === 0 ? 'Primary restaurant' : 'Restaurant workspace'}</p>
             ${planBadgeMarkup}
           </div>
+        </div>
+        <div class="restaurant-card-metrics" aria-label="Restaurant metrics">
+          <div><strong>${Number(user.machines) || 0}</strong><span>Machines</span></div>
+          <div><strong>${Number(user.filters) || 0}</strong><span>Filters</span></div>
+          <div><strong>${Number(user.inventory) || 0}</strong><span>Inventory</span></div>
         </div>
       `;
     restaurantList.appendChild(button);
@@ -944,18 +1154,22 @@ function renderApp() {
   renderMachines();
   updateMachineOptions();
   updateInventoryOptions();
+  updateSupplierOptions();
   updateMaintenanceOptions();
   syncFilterScheduleFields(true);
   renderFilters();
   renderInventory();
+  renderSuppliers();
   renderMaintenance();
   renderCostMetrics();
   renderCostPerMachine();
+  renderEnterpriseDashboard();
   renderRiskScore();
   renderFinancialMetrics();
   renderReports();
   renderAdminUsers();
   renderSmartSetup();
+  renderSmartImportPreview();
 }
 
 function setFormBusy(form, isBusy) {
@@ -1027,6 +1241,10 @@ const machineForm = document.querySelector('#machine-form');
 const machinesList = document.querySelector('#machines-list');
 const machineSearchInput = document.querySelector('#machine-search');
 const machineResultsCount = document.querySelector('#machine-results-count');
+const enterpriseOverview = document.querySelector('#enterprise-overview');
+const facilityOverviewList = document.querySelector('#facility-overview-list');
+const psiAnalyticsGrid = document.querySelector('#psi-analytics-grid');
+const upcomingReplacementsList = document.querySelector('#upcoming-replacements-list');
 const dashboardMachinesRisk = document.querySelector('#dashboard-machines-risk');
 const dashboardAlertsCount = document.querySelector('#dashboard-alerts-count');
 const dashboardMachinesRiskFilterBtn = document.querySelector('#dashboard-machines-risk-filter');
@@ -1044,6 +1262,9 @@ const smartSetupClose = document.querySelector('#smart-setup-close');
 const totalMachinesKpi = document.querySelectorAll('.kpi-card strong')[0];
 const filterMachineSelect = document.querySelector('#filter-machine');
 const filterProductSelect = document.querySelector('#filter-product');
+const filterQuantityInput = document.querySelector('#filter-quantity');
+const filterPsiMinInput = document.querySelector('#filter-psi-min');
+const filterPsiMaxInput = document.querySelector('#filter-psi-max');
 const filterLifeMonthsInput = document.querySelector('#filter-life-months');
 const filterInstalledAtInput = document.querySelector('#filter-installed-at');
 const filterDueDateInput = document.querySelector('#filter-due-date');
@@ -1069,10 +1290,48 @@ const inventoryTotalKpi = document.querySelector('#inventory-total-kpi');
 const inventoryLowStockKpi = document.querySelector('#inventory-low-stock-kpi');
 const inventoryValueKpi = document.querySelector('#inventory-value-kpi');
 const inventoryReorderKpi = document.querySelector('#inventory-reorder-kpi');
+const supplierForm = document.querySelector('#supplier-form');
+const supplierNameInput = document.querySelector('#supplier-name');
+const supplierContactInput = document.querySelector('#supplier-contact');
+const supplierEmailInput = document.querySelector('#supplier-email');
+const supplierPhoneInput = document.querySelector('#supplier-phone');
+const supplierWebsiteInput = document.querySelector('#supplier-website');
+const supplierCategoryInput = document.querySelector('#supplier-category');
+const supplierStatusInput = document.querySelector('#supplier-status');
+const supplierNotesInput = document.querySelector('#supplier-notes');
+const supplierProductForm = document.querySelector('#supplier-product-form');
+const supplierProductInventorySelect = document.querySelector('#supplier-product-inventory');
+const supplierProductSupplierSelect = document.querySelector('#supplier-product-supplier');
+const supplierProductSkuInput = document.querySelector('#supplier-product-sku');
+const supplierProductPriceInput = document.querySelector('#supplier-product-price');
+const supplierProductNotesInput = document.querySelector('#supplier-product-notes');
+const purchaseOrderForm = document.querySelector('#purchase-order-form');
+const purchaseOrderSupplierSelect = document.querySelector('#purchase-order-supplier');
+const purchaseOrderProductSelect = document.querySelector('#purchase-order-product');
+const purchaseOrderQuantityInput = document.querySelector('#purchase-order-quantity');
+const purchaseOrderStatusInput = document.querySelector('#purchase-order-status');
+const purchaseOrderExpectedDateInput = document.querySelector('#purchase-order-expected-date');
+const purchaseOrderNotesInput = document.querySelector('#purchase-order-notes');
+const suppliersSearchInput = document.querySelector('#suppliers-search');
+const suppliersResultsCount = document.querySelector('#suppliers-results-count');
+const suppliersTotalKpi = document.querySelector('#suppliers-total-kpi');
+const supplierProductsKpi = document.querySelector('#supplier-products-kpi');
+const supplierPriceChangesKpi = document.querySelector('#supplier-price-changes-kpi');
+const supplierIncreaseAlertsKpi = document.querySelector('#supplier-increase-alerts-kpi');
+const supplierCriticalProductsKpi = document.querySelector('#supplier-critical-products-kpi');
+const supplierBestSuggestionKpi = document.querySelector('#supplier-best-suggestion-kpi');
+const suppliersList = document.querySelector('#suppliers-list');
+const supplierProductsList = document.querySelector('#supplier-products-list');
+const supplierComparisonList = document.querySelector('#supplier-comparison-list');
+const purchaseOrdersList = document.querySelector('#purchase-orders-list');
 const maintenanceForm = document.querySelector('#maintenance-form');
 const maintenanceMachineSelect = document.querySelector('#maintenance-machine');
 const maintenanceFilterSelect = document.querySelector('#maintenance-filter');
 const maintenanceReplacementProductSelect = document.querySelector('#maintenance-replacement-product');
+const maintenanceTechnicianNameInput = document.querySelector('#maintenance-technician-name');
+const maintenancePriorityInput = document.querySelector('#maintenance-priority');
+const maintenanceInspectionStatusInput = document.querySelector('#maintenance-inspection-status');
+const maintenanceNextDueDateInput = document.querySelector('#maintenance-next-due-date');
 const maintenanceCurrentPsiInput = document.querySelector('#maintenance-current-psi');
 const maintenanceCorrectedPsiInput = document.querySelector('#maintenance-corrected-psi');
 const maintenancePsiChart = document.querySelector('#maintenance-psi-chart');
@@ -1146,8 +1405,15 @@ const printMaintenanceReportBtn = document.querySelector('#print-maintenance-rep
 const closeMaintenanceReportBtn = document.querySelector('#close-maintenance-report');
 const maintenanceReportOutputCard = document.querySelector('#maintenance-report-output-card');
 const maintenanceReportOutput = document.querySelector('#maintenance-report-output');
+const smartImportForm = document.querySelector('#smart-import-form');
+const smartImportFileInput = document.querySelector('#smart-import-file');
+const smartImportTextInput = document.querySelector('#smart-import-text');
+const smartImportStatus = document.querySelector('#smart-import-status');
+const smartImportPreview = document.querySelector('#smart-import-preview');
+const applySmartImportBtn = document.querySelector('#apply-smart-import');
 let alertsExpanded = false;
 let archivedAlerts = loadStoredArray('filtracore_archivedAlerts');
+let pendingImportPreview = null;
 const setupState = loadStoredObject('filtracore_setupState', {
   dashboardReviewed: false,
   reportGenerated: false,
@@ -1168,10 +1434,12 @@ function showSection(id) {
   if (id === 'dashboard') {
     document.querySelector('#dashboard').style.display = 'flex';
     document.querySelector('.kpi-grid').style.display = 'grid';
+    if (enterpriseOverview) enterpriseOverview.style.display = 'grid';
     if (riskPanel) riskPanel.style.display = 'block';
   } else {
     document.querySelector('#dashboard').style.display = 'none';
     document.querySelector('.kpi-grid').style.display = 'none';
+    if (enterpriseOverview) enterpriseOverview.style.display = 'none';
     if (riskPanel) riskPanel.style.display = 'none';
     document.querySelector('#' + id).style.display = 'block';
   }
@@ -1432,7 +1700,7 @@ function getMachineOperationalStatus(machine) {
 
   machineFilters.forEach(filter => {
     const lifecycleStatus = getFilterStatus(filter);
-    const psiStatus = getPsiStatus(filter.psi);
+    const psiStatus = getPsiStatus(filter.psi, filter.psiMin, filter.psiMax);
     const psiTrend = getPsiTrend(filter.psiHistory);
     const psiPrediction = getPsiFailurePrediction(filter.psiHistory);
 
@@ -1518,6 +1786,12 @@ function renderMachines() {
       machine.department,
       machine.brand,
       machine.model,
+      machine.category,
+      machine.serialNumber,
+      machine.building,
+      machine.floor,
+      machine.zone,
+      machine.exactLocation,
       machine.assetId,
       operational.filterName,
       operational.psi,
@@ -1552,8 +1826,11 @@ function renderMachines() {
         const operational = getMachineOperationalStatus(machine);
         const machineDetails = [
           machine.assetId ? `ID: ${machine.assetId}` : '',
+          machine.category ? `Category: ${machine.category}` : '',
           machine.department ? `Dept: ${machine.department}` : '',
-          machine.brand ? `${machine.brand}${machine.model ? ' / ' + machine.model : ''}` : machine.model || ''
+          machine.brand ? `${machine.brand}${machine.model ? ' / ' + machine.model : ''}` : machine.model || '',
+          machine.serialNumber ? `SN: ${machine.serialNumber}` : '',
+          [machine.building, machine.floor, machine.zone, machine.exactLocation].filter(Boolean).join(' / ')
         ].filter(Boolean).join(' • ');
 
         return `
@@ -1822,9 +2099,14 @@ function updateInventoryOptions() {
 
   inventory.forEach(item => {
     const stock = Number(item.stock) || 0;
+    const labelParts = [
+      item.name,
+      item.reorderNumber ? `#${item.reorderNumber}` : '',
+      `Stock: ${stock}`
+    ].filter(Boolean);
     filterProductSelect.innerHTML += `
       <option value="${escapeHTML(item.id)}">
-        ${escapeHTML(item.name)} (Stock: ${stock})
+        ${escapeHTML(labelParts.join(' · '))}
       </option>
     `;
   });
@@ -1903,7 +2185,7 @@ function updateMaintenancePsiPreview() {
 
   if (maintenanceCurrentPsiInput) {
     if (filter.psi || filter.psi === 0) {
-      const psiStatus = getPsiStatus(filter.psi);
+      const psiStatus = getPsiStatus(filter.psi, filter.psiMin, filter.psiMax);
       maintenanceCurrentPsiInput.value = `${filter.psi} PSI - ${psiStatus.status}`;
     } else {
       maintenanceCurrentPsiInput.value = 'No PSI recorded';
@@ -1992,6 +2274,9 @@ function syncFilterScheduleFields(forceDueDate = false) {
 if (filterProductSelect) {
   filterProductSelect.addEventListener('change', () => {
     if (filterLifeMonthsInput) filterLifeMonthsInput.value = '';
+    if (filterQuantityInput && !filterQuantityInput.value) filterQuantityInput.value = '1';
+    if (filterPsiMinInput && !filterPsiMinInput.value) filterPsiMinInput.value = '50';
+    if (filterPsiMaxInput && !filterPsiMaxInput.value) filterPsiMaxInput.value = '70';
     syncFilterScheduleFields(true);
   });
 }
@@ -2021,7 +2306,7 @@ function getFilterStatus(filter) {
 
 function getFilterOperationalStatus(filter) {
   const lifecycleStatus = getFilterStatus(filter);
-  const psiStatus = getPsiStatus(filter.psi);
+  const psiStatus = getPsiStatus(filter.psi, filter.psiMin, filter.psiMax);
   const psiTrend = getPsiTrend(filter.psiHistory);
   const psiPrediction = getPsiFailurePrediction(filter.psiHistory);
 
@@ -2071,8 +2356,11 @@ function getDefaultLifeMonths(category) {
   return 6;
 }
 
-function getPsiStatus(psi) {
+function getPsiStatus(psi, minValue = 50, maxValue = 70) {
   const value = Number(psi);
+  const min = Number(minValue) || 50;
+  const max = Number(maxValue) || 70;
+  const criticalMin = Math.max(0, min - 16);
 
   if (!psi && psi !== 0) {
     return {
@@ -2082,7 +2370,7 @@ function getPsiStatus(psi) {
     };
   }
 
-  if (value <= 34) {
+  if (value <= criticalMin) {
     return {
       status: 'Critical',
       type: 'critical',
@@ -2090,7 +2378,7 @@ function getPsiStatus(psi) {
     };
   }
 
-  if (value <= 49) {
+  if (value < min) {
     return {
       status: 'Warning',
       type: 'warning',
@@ -2098,7 +2386,7 @@ function getPsiStatus(psi) {
     };
   }
 
-  if (value <= 70) {
+  if (value <= max) {
     return {
       status: 'Healthy',
       type: 'healthy',
@@ -2285,6 +2573,10 @@ function renderFilters() {
     const searchableText = [
       machine ? machine.name : 'Unknown Machine',
       filter.productName,
+      filter.reorderNumber,
+      filter.filterType,
+      filter.vendorName,
+      filter.filterQuantity,
       dueDate.toLocaleDateString(),
       daysRemaining <= 0 ? 'Expired' : `${daysRemaining} days`,
       psiText,
@@ -2326,10 +2618,13 @@ function renderFilters() {
         return `
           <div class="filters-row">
             <span class="filters-machine-name">${escapeHTML(machine ? machine.name : 'Unknown Machine')}</span>
-            <span class="filters-product-name">${escapeHTML(filter.productName || 'N/A')}</span>
+            <span class="filters-product-name">
+              ${escapeHTML(filter.productName || 'N/A')}
+              <small>${escapeHTML([filter.reorderNumber ? `Reorder ${filter.reorderNumber}` : '', filter.filterType, filter.vendorName].filter(Boolean).join(' · '))}</small>
+            </span>
             <span>${escapeHTML(dueDate.toLocaleDateString())}</span>
             <span>${escapeHTML(daysRemaining <= 0 ? 'Expired' : `${daysRemaining} days`)}</span>
-            <span>${escapeHTML(psiText)}</span>
+            <span>${escapeHTML(psiText)}<small>Qty ${Number(filter.filterQuantity) || 1}</small></span>
             <span>
               <span class="status-pill status-${escapeHTML(operational.type)}">${escapeHTML(operational.status)}</span>
             </span>
@@ -2420,10 +2715,13 @@ function startMaintenanceFromMachine(machineId) {
   if (maintenanceTypeInput) {
     if (operational.type === 'critical') {
       maintenanceTypeInput.value = 'Critical Inspection';
+      if (maintenancePriorityInput) maintenancePriorityInput.value = 'Critical';
     } else if (operational.type === 'warning') {
       maintenanceTypeInput.value = 'Warning Review';
+      if (maintenancePriorityInput) maintenancePriorityInput.value = 'Due Soon';
     } else {
       maintenanceTypeInput.value = 'General Inspection';
+      if (maintenancePriorityInput) maintenancePriorityInput.value = 'Routine';
     }
   }
 
@@ -2472,6 +2770,10 @@ function startMaintenanceFromFilter(filterId) {
 
   if (maintenanceTypeInput) {
     maintenanceTypeInput.value = operational.type === 'critical' ? 'Critical Inspection' : 'Warning Review';
+  }
+
+  if (maintenancePriorityInput) {
+    maintenancePriorityInput.value = operational.type === 'critical' ? 'Critical' : 'Due Soon';
   }
 
   if (maintenanceDateInput) {
@@ -2591,6 +2893,315 @@ function getInventoryPredictions() {
       action
     };
   });
+}
+
+function getFacilityNameForMachine(machine) {
+  const facility = facilities.find(item => Number(item.id) === Number(machine.facilityId));
+  return facility?.name || machine.location || 'Unassigned Facility';
+}
+
+function renderEnterpriseDashboard() {
+  if (facilityOverviewList) {
+    if (!machines.length) {
+      facilityOverviewList.innerHTML = '<p class="empty-state">No facility data yet.</p>';
+    } else {
+      const facilityMap = new Map();
+
+      machines.forEach(machine => {
+        const facilityName = getFacilityNameForMachine(machine);
+        const current = facilityMap.get(facilityName) || {
+          name: facilityName,
+          machines: [],
+          critical: 0,
+          warning: 0,
+          filters: 0
+        };
+        const status = getMachineOperationalStatus(machine);
+        const machineFilters = filters.filter(filter => Number(filter.machineId) === Number(machine.id));
+
+        current.machines.push({
+          machine,
+          filters: machineFilters
+        });
+        current.filters += machineFilters.length;
+        if (status.type === 'critical') current.critical += 1;
+        if (status.type === 'warning') current.warning += 1;
+        facilityMap.set(facilityName, current);
+      });
+
+      facilityOverviewList.innerHTML = [...facilityMap.values()].sort((a, b) => a.name.localeCompare(b.name)).map(facility => {
+        const health = facility.critical > 0 ? 'Critical' : facility.warning > 0 ? 'Watch' : 'Healthy';
+        const type = facility.critical > 0 ? 'critical' : facility.warning > 0 ? 'warning' : 'healthy';
+        const machineRows = facility.machines.map(({ machine, filters: machineFilters }) => {
+          const detail = [
+            machine.category,
+            machine.exactLocation || machine.location,
+            machine.zone
+          ].filter(Boolean).join(' · ');
+          const filterChips = machineFilters.length
+            ? machineFilters.map(filter => {
+              const reorder = filter.reorderNumber || filter.productName || 'No reorder';
+              const type = filter.filterType || filter.productName || 'Filter';
+              const quantity = Number(filter.filterQuantity) || 1;
+
+              return `
+                <span class="facility-filter-chip">
+                  ${escapeHTML(reorder)} · ${escapeHTML(type)} · Qty ${quantity}
+                </span>
+              `;
+            }).join('')
+            : '<span class="facility-filter-chip">No installed filters</span>';
+
+          return `
+            <div class="facility-machine-row">
+              <div>
+                <strong>${escapeHTML(machine.name)}</strong>
+                <small>${escapeHTML(detail || 'Location pending')}</small>
+              </div>
+              <div class="facility-filter-list">
+                ${filterChips}
+              </div>
+            </div>
+          `;
+        }).join('');
+
+        return `
+          <div class="facility-overview-row">
+            <div class="facility-overview-head">
+              <div>
+                <h4>${escapeHTML(facility.name)}</h4>
+                <p>${facility.machines.length} assets · ${facility.filters} installed filters</p>
+              </div>
+              <span class="status-pill status-${escapeHTML(type)}">${escapeHTML(health)}</span>
+            </div>
+            <div class="facility-machine-list">${machineRows}</div>
+          </div>
+        `;
+      }).join('');
+    }
+  }
+
+  if (psiAnalyticsGrid) {
+    const psiFilters = filters.filter(filter => filter.psi || filter.psi === 0);
+    const outOfRange = psiFilters.filter(filter => {
+      const min = filter.psiMin ?? 50;
+      const max = filter.psiMax ?? 70;
+      return Number(filter.psi) < Number(min) || Number(filter.psi) > Number(max);
+    });
+    const averagePsi = psiFilters.length
+      ? psiFilters.reduce((sum, filter) => sum + Number(filter.psi), 0) / psiFilters.length
+      : 0;
+    const trendWarnings = psiFilters.filter(filter => {
+      const trend = getPsiTrend(filter.psiHistory);
+      return trend.type === 'warning';
+    }).length;
+
+    psiAnalyticsGrid.innerHTML = `
+      <div class="insight-metric">
+        <span>Average PSI</span>
+        <strong>${psiFilters.length ? averagePsi.toFixed(1) : 'N/A'}</strong>
+      </div>
+      <div class="insight-metric warning">
+        <span>Out of Range</span>
+        <strong>${outOfRange.length}</strong>
+      </div>
+      <div class="insight-metric">
+        <span>Tracked Readings</span>
+        <strong>${psiFilters.length}</strong>
+      </div>
+      <div class="insight-metric warning">
+        <span>Trend Watch</span>
+        <strong>${trendWarnings}</strong>
+      </div>
+    `;
+  }
+
+  if (upcomingReplacementsList) {
+    const upcoming = filters.map(filter => {
+      const machine = machines.find(item => item.id === filter.machineId);
+      const dueDate = filter.dueDate ? new Date(filter.dueDate) : addMonths(filter.installedAt, filter.lifeMonths);
+      const daysRemaining = getDaysBetween(new Date(), dueDate);
+      const operational = getFilterOperationalStatus(filter);
+
+      return {
+        filter,
+        machine,
+        dueDate,
+        daysRemaining,
+        operational
+      };
+    }).filter(item => item.daysRemaining <= 90 || item.operational.type !== 'healthy')
+      .sort((a, b) => a.daysRemaining - b.daysRemaining)
+      .slice(0, 6);
+
+    if (!upcoming.length) {
+      upcomingReplacementsList.innerHTML = '<p class="empty-state">No upcoming replacements.</p>';
+    } else {
+      upcomingReplacementsList.innerHTML = upcoming.map(item => {
+        const type = item.operational.type === 'critical' || item.daysRemaining <= 0
+          ? 'critical'
+          : item.operational.type === 'warning' || item.daysRemaining <= 30
+            ? 'warning'
+            : 'healthy';
+        const daysLabel = item.daysRemaining <= 0 ? 'Expired' : `${item.daysRemaining} days`;
+
+        return `
+          <div class="upcoming-replacement-row">
+            <div>
+              <h4>${escapeHTML(item.machine ? item.machine.name : 'Unknown Machine')}</h4>
+              <p>${escapeHTML(item.filter.productName || 'Filter')} · Qty ${Number(item.filter.filterQuantity) || 1} · ${escapeHTML(daysLabel)}</p>
+            </div>
+            <button type="button" class="filter-action-btn filter-maintenance-btn" onclick="startMaintenanceFromFilter(${Number(item.filter.id)})">
+              Log
+            </button>
+            <span class="status-pill status-${escapeHTML(type)}">${escapeHTML(item.operational.status)}</span>
+          </div>
+        `;
+      }).join('');
+    }
+  }
+}
+
+function setSmartImportStatus(message, tone = '') {
+  if (!smartImportStatus) return;
+
+  smartImportStatus.textContent = message;
+  smartImportStatus.dataset.tone = tone;
+}
+
+function readFileAsDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    if (!file) {
+      resolve('');
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ''));
+    reader.onerror = () => reject(new Error('Unable to read the selected file.'));
+    reader.readAsDataURL(file);
+  });
+}
+
+function renderSmartImportPreview() {
+  if (!smartImportPreview) return;
+
+  const preview = pendingImportPreview;
+  if (!preview || !Array.isArray(preview.records) || preview.records.length === 0) {
+    smartImportPreview.innerHTML = '<p class="empty-state">No import preview yet.</p>';
+    if (applySmartImportBtn) applySmartImportBtn.disabled = true;
+    return;
+  }
+
+  const warnings = Array.isArray(preview.warnings) && preview.warnings.length
+    ? `
+      <div class="smart-import-warnings">
+        ${preview.warnings.map(warning => `<p>${escapeHTML(warning)}</p>`).join('')}
+      </div>
+    `
+    : '';
+
+  smartImportPreview.innerHTML = `
+    <div class="smart-import-summary">
+      <div>
+        <span>Source</span>
+        <strong>${escapeHTML(preview.sourceName || 'Smart import')}</strong>
+      </div>
+      <div>
+        <span>Detected</span>
+        <strong>${preview.records.length}</strong>
+      </div>
+      <div>
+        <span>AI Vision</span>
+        <strong>${preview.aiUsed ? 'Used' : 'Fallback'}</strong>
+      </div>
+    </div>
+    ${warnings}
+    <div class="smart-import-table">
+      <div class="smart-import-row smart-import-header">
+        <span>Venue</span>
+        <span>Machine</span>
+        <span>Reorder #</span>
+        <span>Filter Type</span>
+        <span>Qty</span>
+      </div>
+      ${preview.records.map(record => `
+        <div class="smart-import-row">
+          <span>${escapeHTML(record.venue)}</span>
+          <span>${escapeHTML(record.machine)}</span>
+          <span>${escapeHTML(record.reorderNumber)}</span>
+          <span>${escapeHTML(record.filterType)}</span>
+          <span>${Number(record.quantity) || 1}</span>
+        </div>
+      `).join('')}
+    </div>
+  `;
+
+  if (applySmartImportBtn) applySmartImportBtn.disabled = false;
+}
+
+async function buildSmartImportPayload() {
+  const file = smartImportFileInput?.files?.[0] || null;
+  const text = smartImportTextInput?.value || '';
+  const dataUrl = file ? await readFileAsDataUrl(file) : '';
+
+  return {
+    text,
+    dataUrl,
+    fileName: file?.name || 'Manual import',
+    mimeType: file?.type || ''
+  };
+}
+
+async function previewSmartImport() {
+  const payload = await buildSmartImportPayload();
+
+  if (!payload.text.trim() && !payload.dataUrl) {
+    setSmartImportStatus('Upload a file or paste sheet text first.', 'error');
+    return;
+  }
+
+  setSmartImportStatus('Scanning import source...');
+  if (applySmartImportBtn) applySmartImportBtn.disabled = true;
+
+  const preview = await apiRequest('/api/import/preview', {
+    method: 'POST',
+    body: JSON.stringify(payload)
+  });
+
+  pendingImportPreview = preview;
+  renderSmartImportPreview();
+
+  if (preview.records?.length) {
+    setSmartImportStatus(`Detected ${preview.records.length} records. Review and apply when ready.`, 'success');
+  } else {
+    setSmartImportStatus('No records detected. Try a spreadsheet, PDF text, or paste OCR text from the sheet.', 'error');
+  }
+}
+
+async function applySmartImport() {
+  if (!pendingImportPreview?.records?.length) {
+    setSmartImportStatus('Preview an import before applying.', 'error');
+    return;
+  }
+
+  setSmartImportStatus('Creating machine and filter records...');
+  if (applySmartImportBtn) applySmartImportBtn.disabled = true;
+
+  const state = await apiRequest('/api/import/apply', {
+    method: 'POST',
+    body: JSON.stringify(pendingImportPreview)
+  });
+
+  applyServerState(state);
+  renderApp();
+  const summary = state.importSummary || {};
+  setSmartImportStatus(
+    `Applied ${summary.applied || pendingImportPreview.records.length} records. Machines: ${summary.machinesCreated || 0} new, Filters: ${summary.filtersCreated || 0} new.`,
+    'success'
+  );
+  pendingImportPreview = null;
+  renderSmartImportPreview();
 }
 
 function renderReports() {
@@ -2791,6 +3402,9 @@ function renderInventory() {
     const searchableText = [
       item.name,
       item.category,
+      item.reorderNumber,
+      item.filterType,
+      item.vendorName,
       stock,
       unitCost,
       reorderLevel,
@@ -2814,9 +3428,11 @@ function renderInventory() {
       <div class="inventory-row inventory-header">
         <span>Filter</span>
         <span>Category</span>
+        <span>Reorder #</span>
         <span>Stock</span>
         <span>Unit Cost</span>
         <span>Reorder Level</span>
+        <span>Usage</span>
         <span>Status</span>
       </div>
 
@@ -2825,14 +3441,20 @@ function renderInventory() {
         const reorderLevel = Number(item.reorderLevel) || 0;
         const unitCost = Number(item.unitCost ?? item.cost) || 0;
         const stockStatus = getInventoryStockStatus(item);
+        const usage = inventoryUsage.find(entry => Number(entry.inventoryId) === Number(item.id));
 
         return `
           <div class="inventory-row">
-            <span class="inventory-item-name">${escapeHTML(item.name)}</span>
+            <span class="inventory-item-name">
+              ${escapeHTML(item.name)}
+              <small>${escapeHTML([item.filterType, item.vendorName].filter(Boolean).join(' · '))}</small>
+            </span>
             <span>${escapeHTML(item.category || 'Uncategorized')}</span>
+            <span>${escapeHTML(item.reorderNumber || 'N/A')}</span>
             <span>${stock}</span>
             <span>$${unitCost.toFixed(2)}</span>
             <span>${reorderLevel}</span>
+            <span>${usage ? `${usage.totalUsed} used` : 'No usage'}</span>
             <span>
               <span class="stock-pill stock-${escapeHTML(stockStatus.type)}">${escapeHTML(stockStatus.status)}</span>
             </span>
@@ -2847,6 +3469,326 @@ if (inventorySearchInput) {
   inventorySearchInput.addEventListener('input', () => {
     renderInventory();
   });
+}
+
+function formatMoney(value) {
+  return `$${(Number(value) || 0).toFixed(2)}`;
+}
+
+function formatShortDate(value) {
+  if (!value) return 'Not updated';
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? 'Not updated' : date.toLocaleDateString();
+}
+
+function getSupplierById(id) {
+  return suppliers.find(supplier => Number(supplier.id) === Number(id));
+}
+
+function getInventoryById(id) {
+  return inventory.find(item => Number(item.id) === Number(id));
+}
+
+function getSupplierProductLabel(product) {
+  const item = getInventoryById(product.inventoryId);
+  const supplier = getSupplierById(product.supplierId);
+  const productName = product.inventoryName || product.productName || item?.name || 'Inventory item';
+  const supplierName = product.supplierName || supplier?.name || 'Supplier';
+  return `${productName} · ${supplierName} · ${formatMoney(product.currentPrice)}`;
+}
+
+function getSupplierProductSearchText(product) {
+  const item = getInventoryById(product.inventoryId);
+  const supplier = getSupplierById(product.supplierId);
+
+  return [
+    product.productName,
+    product.inventoryName,
+    item?.name,
+    item?.category,
+    item?.reorderNumber,
+    item?.filterType,
+    product.supplierName,
+    supplier?.name,
+    supplier?.category,
+    product.supplierSku,
+    product.status,
+    product.direction
+  ].join(' ').toLowerCase();
+}
+
+function getSupplierComparisonRows() {
+  const grouped = supplierProducts
+    .filter(product => product.status !== 'inactive' && getInventoryById(product.inventoryId))
+    .reduce((groups, product) => {
+      const current = groups.get(Number(product.inventoryId)) || [];
+      current.push(product);
+      groups.set(Number(product.inventoryId), current);
+      return groups;
+    }, new Map());
+
+  return Array.from(grouped.entries()).map(([inventoryId, products]) => {
+    const sorted = products.slice().sort((a, b) => Number(a.currentPrice) - Number(b.currentPrice));
+    const best = sorted[0];
+    const highest = sorted[sorted.length - 1];
+    const item = getInventoryById(inventoryId);
+    const bestSupplier = getSupplierById(best.supplierId);
+    const highestPrice = Number(highest?.currentPrice) || 0;
+    const bestPrice = Number(best?.currentPrice) || 0;
+    const spread = Math.max(highestPrice - bestPrice, 0);
+
+    return {
+      inventoryId,
+      item,
+      products: sorted,
+      best,
+      bestSupplierName: best.supplierName || bestSupplier?.name || 'Supplier',
+      bestPrice,
+      highestPrice,
+      spread,
+      spreadPercent: highestPrice > 0 ? (spread / highestPrice) * 100 : 0
+    };
+  }).sort((a, b) => b.spread - a.spread);
+}
+
+function getSupplierStats() {
+  const monitoredIds = new Set(supplierProducts.map(product => Number(product.inventoryId)).filter(Boolean));
+  const comparisonRows = getSupplierComparisonRows();
+  const priceChanges = supplierProducts.filter(product => product.lastPrice !== null && Number(product.currentPrice) !== Number(product.lastPrice)).length;
+  const increaseAlerts = supplierProducts.filter(product => product.direction === 'up').length;
+  const criticalProducts = inventory.filter(item => {
+    if (!monitoredIds.has(Number(item.id))) return false;
+    const stock = Number(item.stock) || 0;
+    const reorderLevel = Number(item.reorderLevel) || 0;
+    return stock <= reorderLevel;
+  }).length;
+  const bestCounts = comparisonRows.reduce((counts, row) => {
+    const current = counts.get(row.bestSupplierName) || 0;
+    counts.set(row.bestSupplierName, current + 1);
+    return counts;
+  }, new Map());
+  const bestSupplier = Array.from(bestCounts.entries()).sort((a, b) => b[1] - a[1])[0]?.[0] || 'N/A';
+
+  return {
+    monitoredProducts: monitoredIds.size,
+    priceChanges,
+    increaseAlerts,
+    criticalProducts,
+    bestSupplier
+  };
+}
+
+function updatePurchaseOrderProductOptions() {
+  if (!purchaseOrderProductSelect) return;
+
+  const selectedSupplierId = Number(purchaseOrderSupplierSelect?.value) || null;
+  const selectedProductId = purchaseOrderProductSelect.value;
+  const products = supplierProducts.filter(product => (
+    product.status !== 'inactive'
+    && (!selectedSupplierId || Number(product.supplierId) === selectedSupplierId)
+  ));
+
+  purchaseOrderProductSelect.innerHTML = `
+    <option value="">Optional tracked product</option>
+    ${products.map(product => `
+      <option value="${Number(product.id)}">${escapeHTML(getSupplierProductLabel(product))}</option>
+    `).join('')}
+  `;
+
+  if (products.some(product => String(product.id) === String(selectedProductId))) {
+    purchaseOrderProductSelect.value = selectedProductId;
+  }
+}
+
+function updateSupplierOptions() {
+  if (supplierProductInventorySelect) {
+    const selectedValue = supplierProductInventorySelect.value;
+    supplierProductInventorySelect.innerHTML = `
+      <option value="">Select item</option>
+      ${inventory.map(item => `
+        <option value="${Number(item.id)}">${escapeHTML(item.name)} · ${escapeHTML(item.reorderNumber || item.category || 'Inventory')}</option>
+      `).join('')}
+    `;
+    supplierProductInventorySelect.value = selectedValue;
+  }
+
+  const supplierOptions = suppliers.map(supplier => `
+    <option value="${Number(supplier.id)}">${escapeHTML(supplier.name)}${supplier.status === 'inactive' ? ' · inactive' : ''}</option>
+  `).join('');
+
+  if (supplierProductSupplierSelect) {
+    const selectedValue = supplierProductSupplierSelect.value;
+    supplierProductSupplierSelect.innerHTML = `<option value="">Select supplier</option>${supplierOptions}`;
+    supplierProductSupplierSelect.value = selectedValue;
+  }
+
+  if (purchaseOrderSupplierSelect) {
+    const selectedValue = purchaseOrderSupplierSelect.value;
+    purchaseOrderSupplierSelect.innerHTML = `<option value="">Select supplier</option>${supplierOptions}`;
+    purchaseOrderSupplierSelect.value = selectedValue;
+  }
+
+  updatePurchaseOrderProductOptions();
+}
+
+function renderSuppliers() {
+  if (!suppliersList && !supplierProductsList && !supplierComparisonList) return;
+
+  const searchValue = suppliersSearchInput ? suppliersSearchInput.value.trim().toLowerCase() : '';
+  const stats = getSupplierStats();
+  const comparisonRows = getSupplierComparisonRows();
+
+  if (suppliersTotalKpi) suppliersTotalKpi.textContent = suppliers.length;
+  if (supplierProductsKpi) supplierProductsKpi.textContent = stats.monitoredProducts;
+  if (supplierPriceChangesKpi) supplierPriceChangesKpi.textContent = stats.priceChanges;
+  if (supplierIncreaseAlertsKpi) supplierIncreaseAlertsKpi.textContent = stats.increaseAlerts;
+  if (supplierCriticalProductsKpi) supplierCriticalProductsKpi.textContent = stats.criticalProducts;
+  if (supplierBestSuggestionKpi) supplierBestSuggestionKpi.textContent = stats.bestSupplier;
+
+  const visibleSuppliers = suppliers.filter(supplier => [
+    supplier.name,
+    supplier.contact,
+    supplier.email,
+    supplier.phone,
+    supplier.website,
+    supplier.category,
+    supplier.status,
+    supplier.notes
+  ].join(' ').toLowerCase().includes(searchValue));
+
+  const visibleProducts = supplierProducts.filter(product => getSupplierProductSearchText(product).includes(searchValue));
+  const visibleComparisons = comparisonRows.filter(row => [
+    row.item?.name,
+    row.item?.category,
+    row.item?.reorderNumber,
+    row.bestSupplierName,
+    ...row.products.map(product => getSupplierProductSearchText(product))
+  ].join(' ').toLowerCase().includes(searchValue));
+  const visibleOrders = purchaseOrders.filter(order => [
+    order.poNumber,
+    order.supplierName,
+    getSupplierById(order.supplierId)?.name,
+    order.status,
+    order.notes,
+    ...(order.items || []).map(item => item.inventoryName)
+  ].join(' ').toLowerCase().includes(searchValue));
+
+  if (suppliersResultsCount) {
+    const totalVisible = visibleSuppliers.length + visibleProducts.length + visibleOrders.length;
+    suppliersResultsCount.textContent = `${totalVisible} records`;
+  }
+
+  if (supplierComparisonList) {
+    supplierComparisonList.innerHTML = visibleComparisons.length === 0
+      ? '<p class="empty-state">No supplier pricing matches this view.</p>'
+      : visibleComparisons.map(row => {
+        const item = row.item || {};
+        const stockStatus = getInventoryStockStatus(item);
+
+        return `
+          <div class="supplier-comparison-card">
+            <div>
+              <span class="supplier-eyebrow">${escapeHTML(item.reorderNumber || item.category || 'Inventory')}</span>
+              <strong>${escapeHTML(item.name || 'Inventory item')}</strong>
+              <small>${row.products.length} suppliers · ${escapeHTML(stockStatus.status)}</small>
+            </div>
+            <div class="supplier-best-price">
+              <span>Recommended</span>
+              <strong>${escapeHTML(row.bestSupplierName)}</strong>
+              <small>${formatMoney(row.bestPrice)} · saves ${formatMoney(row.spread)}</small>
+            </div>
+          </div>
+        `;
+      }).join('');
+  }
+
+  if (supplierProductsList) {
+    supplierProductsList.innerHTML = visibleProducts.length === 0
+      ? '<p class="empty-state">No supplier products tracked yet.</p>'
+      : `
+        <div class="supplier-products-table">
+          <div class="supplier-product-row supplier-product-header">
+            <span>Product</span>
+            <span>Supplier</span>
+            <span>Current</span>
+            <span>Last</span>
+            <span>Change</span>
+            <span>Updated</span>
+          </div>
+          ${visibleProducts.map(product => {
+            const item = getInventoryById(product.inventoryId);
+            const supplier = getSupplierById(product.supplierId);
+            const directionClass = product.direction === 'up' ? 'increase' : product.direction === 'down' ? 'decrease' : 'flat';
+            const directionLabel = product.direction === 'up' ? 'Up' : product.direction === 'down' ? 'Down' : 'Flat';
+
+            return `
+              <div class="supplier-product-row">
+                <span class="supplier-product-name">
+                  ${escapeHTML(product.inventoryName || item?.name || product.productName || 'Inventory item')}
+                  <small>${escapeHTML([item?.reorderNumber, product.supplierSku].filter(Boolean).join(' · ') || 'No SKU')}</small>
+                </span>
+                <span>${escapeHTML(product.supplierName || supplier?.name || 'Supplier')}</span>
+                <span>${formatMoney(product.currentPrice)}</span>
+                <span>${product.lastPrice === null ? 'N/A' : formatMoney(product.lastPrice)}</span>
+                <span><span class="price-badge ${directionClass}">${directionLabel} ${product.variationPercent ? `${product.variationPercent > 0 ? '+' : ''}${product.variationPercent.toFixed(1)}%` : '0.0%'}</span></span>
+                <span>${escapeHTML(formatShortDate(product.lastUpdatedAt))}</span>
+              </div>
+            `;
+          }).join('')}
+        </div>
+      `;
+  }
+
+  if (suppliersList) {
+    suppliersList.innerHTML = visibleSuppliers.length === 0
+      ? '<p class="empty-state">No suppliers registered yet.</p>'
+      : visibleSuppliers.map(supplier => {
+        const productCount = supplierProducts.filter(product => Number(product.supplierId) === Number(supplier.id)).length;
+
+        return `
+          <article class="supplier-directory-card">
+            <div>
+              <span class="status-badge supplier-status-${escapeHTML(supplier.status)}">${escapeHTML(supplier.status)}</span>
+              <h4>${escapeHTML(supplier.name)}</h4>
+              <p>${escapeHTML(supplier.category || 'Uncategorized supplier')}</p>
+            </div>
+            <div class="supplier-contact-stack">
+              <span>${escapeHTML(supplier.contact || 'No contact')}</span>
+              <span>${escapeHTML(supplier.email || supplier.phone || 'No contact details')}</span>
+              <span>${productCount} products linked</span>
+            </div>
+          </article>
+        `;
+      }).join('');
+  }
+
+  if (purchaseOrdersList) {
+    purchaseOrdersList.innerHTML = visibleOrders.length === 0
+      ? '<p class="empty-state">No purchase orders yet.</p>'
+      : visibleOrders.slice(0, 8).map(order => `
+        <article class="purchase-order-card">
+          <div>
+            <span class="status-badge po-status-${escapeHTML(String(order.status).toLowerCase())}">${escapeHTML(order.status)}</span>
+            <strong>${escapeHTML(order.poNumber || `PO-${order.id}`)}</strong>
+            <small>${escapeHTML(order.supplierName || getSupplierById(order.supplierId)?.name || 'Supplier')}</small>
+          </div>
+          <div>
+            <strong>${formatMoney(order.totalAmount)}</strong>
+            <small>${escapeHTML(order.expectedDate ? `Expected ${formatShortDate(order.expectedDate)}` : 'No expected date')}</small>
+          </div>
+        </article>
+      `).join('');
+  }
+}
+
+if (suppliersSearchInput) {
+  suppliersSearchInput.addEventListener('input', () => {
+    renderSuppliers();
+  });
+}
+
+if (purchaseOrderSupplierSelect) {
+  purchaseOrderSupplierSelect.addEventListener('change', updatePurchaseOrderProductOptions);
 }
 
 function getMaintenanceTypeStatus(type) {
@@ -2941,6 +3883,9 @@ function renderMaintenance() {
       machine ? machine.name : 'Unknown Machine',
       filter ? filter.productName : 'Not assigned',
       record.type,
+      record.technicianName,
+      record.inspectionStatus,
+      record.priority,
       record.notes,
       typeStatus.label
     ].join(' ').toLowerCase();
@@ -3043,7 +3988,10 @@ function renderMaintenance() {
             <span class="maintenance-machine-name">${escapeHTML(machine ? machine.name : 'Unknown Machine')}</span>
             <span class="maintenance-filter-name">${escapeHTML(filter ? filter.productName : 'Not assigned')}</span>
             <span>${escapeHTML(record.type || 'General')}</span>
-            <span class="maintenance-notes-cell">${escapeHTML(record.notes || 'No notes')}</span>
+            <span class="maintenance-notes-cell">
+              ${escapeHTML(record.notes || 'No notes')}
+              <small>${escapeHTML([record.technicianName ? `Tech: ${record.technicianName}` : '', record.inspectionStatus ? `Inspection: ${record.inspectionStatus}` : '', record.priority].filter(Boolean).join(' · '))}</small>
+            </span>
             <span>
               <span class="maintenance-pill maintenance-${escapeHTML(typeStatus.type)}">${escapeHTML(typeStatus.label)}</span>
             </span>
@@ -3292,7 +4240,7 @@ function getSystemAlerts() {
 
     machineFilters.forEach(filter => {
       const status = getFilterStatus(filter);
-      const psiStatus = getPsiStatus(filter.psi);
+      const psiStatus = getPsiStatus(filter.psi, filter.psiMin, filter.psiMax);
       const psiTrend = getPsiTrend(filter.psiHistory);
       const psiPrediction = getPsiFailurePrediction(filter.psiHistory);
 
@@ -3662,6 +4610,10 @@ function startMaintenanceFromAlert(machineName, alertType, alertMessage) {
     maintenanceTypeInput.value = alertType === 'critical' ? 'Critical Inspection' : 'Warning Review';
   }
 
+  if (maintenancePriorityInput) {
+    maintenancePriorityInput.value = alertType === 'critical' ? 'Critical' : 'Due Soon';
+  }
+
   if (maintenanceDateInput) {
     maintenanceDateInput.value = today;
   }
@@ -3958,6 +4910,39 @@ if (clientWorkspaceForm) {
   });
 }
 
+if (smartImportForm) {
+  smartImportForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+
+    try {
+      setFormBusy(smartImportForm, true);
+      await previewSmartImport();
+    } catch (error) {
+      console.error(error);
+      setSmartImportStatus(error.message || 'Unable to preview import.', 'error');
+    } finally {
+      setFormBusy(smartImportForm, false);
+      if (applySmartImportBtn && pendingImportPreview?.records?.length) {
+        applySmartImportBtn.disabled = false;
+      }
+    }
+  });
+}
+
+if (applySmartImportBtn) {
+  applySmartImportBtn.addEventListener('click', async () => {
+    try {
+      await applySmartImport();
+    } catch (error) {
+      console.error(error);
+      setSmartImportStatus(error.message || 'Unable to apply import.', 'error');
+      if (pendingImportPreview?.records?.length) {
+        applySmartImportBtn.disabled = false;
+      }
+    }
+  });
+}
+
 links.forEach(link => {
   link.addEventListener('click', (e) => {
     e.preventDefault();
@@ -3981,10 +4966,16 @@ if (machineForm) {
       id: Date.now(),
       name: document.querySelector('#machine-name').value.trim(),
       type: document.querySelector('#machine-type').value.trim(),
+      category: document.querySelector('#machine-category')?.value.trim() || document.querySelector('#machine-type').value.trim(),
       location: document.querySelector('#machine-location').value.trim(),
       department: document.querySelector('#machine-department').value.trim(),
       brand: document.querySelector('#machine-brand').value.trim(),
       model: document.querySelector('#machine-model').value.trim(),
+      serialNumber: document.querySelector('#machine-serial-number')?.value.trim() || '',
+      building: document.querySelector('#machine-building')?.value.trim() || '',
+      floor: document.querySelector('#machine-floor')?.value.trim() || '',
+      zone: document.querySelector('#machine-zone')?.value.trim() || '',
+      exactLocation: document.querySelector('#machine-exact-location')?.value.trim() || document.querySelector('#machine-location').value.trim(),
       assetId: document.querySelector('#machine-asset-id').value.trim()
     };
 
@@ -4030,6 +5021,9 @@ if (filterForm) {
     const product = inventory.find(item => item.id === productId);
     const psiInput = document.querySelector('#filter-psi');
     const psi = psiInput && psiInput.value !== '' ? Number(psiInput.value) : null;
+    const filterQuantity = Math.max(1, Number(filterQuantityInput?.value || 1));
+    const psiMin = filterPsiMinInput && filterPsiMinInput.value !== '' ? Number(filterPsiMinInput.value) : 50;
+    const psiMax = filterPsiMaxInput && filterPsiMaxInput.value !== '' ? Number(filterPsiMaxInput.value) : 70;
     const lifeMonths = Number(filterLifeMonthsInput?.value || product?.lifeMonths || getDefaultLifeMonths(product?.category));
     const installedAt = parseDateInput(filterInstalledAtInput?.value);
     const dueDate = filterDueDateInput?.value
@@ -4046,7 +5040,7 @@ if (filterForm) {
       return;
     }
 
-    if (Number(product.stock) <= 0) {
+    if (Number(product.stock) < filterQuantity) {
       alert('No stock available for this filter product');
       return;
     }
@@ -4065,6 +5059,10 @@ if (filterForm) {
             machineId,
             productId,
             psi,
+            filterQuantity,
+            psiMin,
+            psiMax,
+            vendorName: product.vendorName || '',
             lifeMonths,
             installedAt: installedAt.toISOString(),
             dueDate: dueDate.toISOString()
@@ -4083,13 +5081,19 @@ if (filterForm) {
       return;
     }
 
-    product.stock = Number(product.stock) - 1;
+    product.stock = Number(product.stock) - filterQuantity;
 
     const filter = {
       id: Date.now(),
       machineId,
       productId: product.id,
       productName: product.name,
+      reorderNumber: product.reorderNumber || '',
+      filterType: product.filterType || product.category || '',
+      filterQuantity,
+      psiMin,
+      psiMax,
+      vendorName: product.vendorName || '',
       cost: Number(product.unitCost || 0),
       lifeMonths,
       psi,
@@ -4104,6 +5108,19 @@ if (filterForm) {
     };
 
     filters.push(filter);
+    const usage = inventoryUsage.find(entry => Number(entry.inventoryId) === Number(product.id));
+    if (usage) {
+      usage.totalUsed += filterQuantity;
+      usage.events += 1;
+      usage.lastUsedAt = installedAt.toISOString();
+    } else {
+      inventoryUsage.push({
+        inventoryId: product.id,
+        totalUsed: filterQuantity,
+        events: 1,
+        lastUsedAt: installedAt.toISOString()
+      });
+    }
     saveLocalData();
     filterForm.reset();
     renderApp();
@@ -4120,6 +5137,9 @@ if (inventoryForm) {
       id: Date.now(),
       name: document.querySelector('#inventory-name').value.trim(),
       category: category.trim(),
+      reorderNumber: document.querySelector('#inventory-reorder-number')?.value.trim() || '',
+      filterType: document.querySelector('#inventory-filter-type')?.value.trim() || category.trim(),
+      vendorName: document.querySelector('#inventory-vendor-name')?.value.trim() || '',
       stock: Number(document.querySelector('#inventory-stock').value),
       unitCost: Number(document.querySelector('#inventory-cost').value),
       reorderLevel: Number(document.querySelector('#inventory-reorder').value),
@@ -4154,6 +5174,231 @@ if (inventoryForm) {
   });
 }
 
+if (supplierForm) {
+  supplierForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+
+    const supplierPayload = {
+      name: supplierNameInput?.value.trim() || '',
+      contact: supplierContactInput?.value.trim() || '',
+      email: supplierEmailInput?.value.trim() || '',
+      phone: supplierPhoneInput?.value.trim() || '',
+      website: supplierWebsiteInput?.value.trim() || '',
+      category: supplierCategoryInput?.value.trim() || '',
+      status: supplierStatusInput?.value || 'active',
+      notes: supplierNotesInput?.value.trim() || ''
+    };
+
+    if (!supplierPayload.name) {
+      alert('Enter supplier name');
+      return;
+    }
+
+    if (apiAvailable) {
+      try {
+        setFormBusy(supplierForm, true);
+        const state = await apiRequest('/api/suppliers', {
+          method: 'POST',
+          body: JSON.stringify(supplierPayload)
+        });
+
+        applyServerState(state);
+        supplierForm.reset();
+        renderApp();
+      } catch (error) {
+        showSaveError(error);
+      } finally {
+        setFormBusy(supplierForm, false);
+      }
+
+      return;
+    }
+
+    suppliers.push(normalizeSupplier({
+      id: Date.now(),
+      ...supplierPayload,
+      createdAt: new Date().toISOString()
+    }));
+    saveLocalData();
+    supplierForm.reset();
+    renderApp();
+  });
+}
+
+if (supplierProductForm) {
+  supplierProductForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+
+    const inventoryId = Number(supplierProductInventorySelect?.value);
+    const supplierId = Number(supplierProductSupplierSelect?.value);
+    const currentPrice = Number(supplierProductPriceInput?.value);
+    const supplierSku = supplierProductSkuInput?.value.trim() || '';
+    const notes = supplierProductNotesInput?.value.trim() || '';
+
+    if (!inventoryId || !supplierId || !Number.isFinite(currentPrice)) {
+      alert('Select inventory, supplier, and current price');
+      return;
+    }
+
+    const payload = {
+      inventoryId,
+      supplierId,
+      supplierSku,
+      currentPrice,
+      notes,
+      status: 'active'
+    };
+
+    if (apiAvailable) {
+      try {
+        setFormBusy(supplierProductForm, true);
+        const state = await apiRequest('/api/supplier-products', {
+          method: 'POST',
+          body: JSON.stringify(payload)
+        });
+
+        applyServerState(state);
+        supplierProductForm.reset();
+        renderApp();
+      } catch (error) {
+        showSaveError(error);
+      } finally {
+        setFormBusy(supplierProductForm, false);
+      }
+
+      return;
+    }
+
+    const item = getInventoryById(inventoryId);
+    const supplier = getSupplierById(supplierId);
+    const existing = supplierProducts.find(product => (
+      Number(product.inventoryId) === inventoryId
+      && Number(product.supplierId) === supplierId
+      && String(product.supplierSku || '') === supplierSku
+    ));
+
+    if (existing) {
+      existing.lastPrice = existing.currentPrice;
+      existing.currentPrice = currentPrice;
+      existing.variationPercent = existing.lastPrice
+        ? ((currentPrice - existing.lastPrice) / existing.lastPrice) * 100
+        : 0;
+      existing.direction = existing.variationPercent > 0 ? 'up' : existing.variationPercent < 0 ? 'down' : 'flat';
+      existing.notes = notes;
+      existing.lastUpdatedAt = new Date().toISOString();
+    } else {
+      supplierProducts.push(normalizeSupplierProduct({
+        id: Date.now(),
+        inventoryId,
+        supplierId,
+        supplierName: supplier?.name || '',
+        inventoryName: item?.name || '',
+        inventoryCategory: item?.category || '',
+        stock: item?.stock || 0,
+        reorderLevel: item?.reorderLevel || 0,
+        supplierSku,
+        productName: item?.name || '',
+        currentPrice,
+        lastPrice: null,
+        notes,
+        status: 'active',
+        lastUpdatedAt: new Date().toISOString()
+      }));
+    }
+
+    priceHistory.unshift(normalizePriceHistoryEntry({
+      id: Date.now(),
+      supplierProductId: existing?.id || supplierProducts[supplierProducts.length - 1]?.id,
+      supplierId,
+      inventoryId,
+      price: currentPrice,
+      previousPrice: existing?.lastPrice ?? null,
+      changedAt: new Date().toISOString(),
+      source: 'manual',
+      notes
+    }));
+    saveLocalData();
+    supplierProductForm.reset();
+    renderApp();
+  });
+}
+
+if (purchaseOrderForm) {
+  purchaseOrderForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+
+    const supplierId = Number(purchaseOrderSupplierSelect?.value);
+    const supplierProductId = Number(purchaseOrderProductSelect?.value) || null;
+    const supplierProduct = supplierProducts.find(product => Number(product.id) === supplierProductId);
+    const quantity = Math.max(1, Number(purchaseOrderQuantityInput?.value) || 1);
+    const payload = {
+      supplierId,
+      status: purchaseOrderStatusInput?.value || 'Draft',
+      expectedDate: purchaseOrderExpectedDateInput?.value || null,
+      notes: purchaseOrderNotesInput?.value.trim() || '',
+      items: supplierProduct ? [{
+        supplierProductId: supplierProduct.id,
+        inventoryId: supplierProduct.inventoryId,
+        quantity,
+        unitPrice: supplierProduct.currentPrice
+      }] : []
+    };
+
+    if (!supplierId) {
+      alert('Select supplier for purchase order');
+      return;
+    }
+
+    if (apiAvailable) {
+      try {
+        setFormBusy(purchaseOrderForm, true);
+        const state = await apiRequest('/api/purchase-orders', {
+          method: 'POST',
+          body: JSON.stringify(payload)
+        });
+
+        applyServerState(state);
+        purchaseOrderForm.reset();
+        renderApp();
+      } catch (error) {
+        showSaveError(error);
+      } finally {
+        setFormBusy(purchaseOrderForm, false);
+      }
+
+      return;
+    }
+
+    const supplier = getSupplierById(supplierId);
+    const lineTotal = supplierProduct ? quantity * Number(supplierProduct.currentPrice) : 0;
+
+    purchaseOrders.unshift(normalizePurchaseOrder({
+      id: Date.now(),
+      supplierId,
+      supplierName: supplier?.name || '',
+      poNumber: `FC-PO-${String(Date.now()).slice(-8)}`,
+      status: payload.status,
+      expectedDate: payload.expectedDate,
+      notes: payload.notes,
+      totalAmount: lineTotal,
+      createdAt: new Date().toISOString(),
+      items: supplierProduct ? [{
+        id: Date.now() + 1,
+        purchaseOrderId: Date.now(),
+        inventoryId: supplierProduct.inventoryId,
+        supplierProductId: supplierProduct.id,
+        inventoryName: supplierProduct.inventoryName || getInventoryById(supplierProduct.inventoryId)?.name || '',
+        quantity,
+        unitPrice: supplierProduct.currentPrice,
+        lineTotal
+      }] : []
+    }));
+    saveLocalData();
+    purchaseOrderForm.reset();
+    renderApp();
+  });
+}
+
 if (maintenanceForm) {
   maintenanceForm.addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -4164,6 +5409,10 @@ if (maintenanceForm) {
     const date = document.querySelector('#maintenance-date').value;
     const notes = document.querySelector('#maintenance-notes').value;
     const replacementProductId = Number(document.querySelector('#maintenance-replacement-product')?.value) || null;
+    const technicianName = maintenanceTechnicianNameInput?.value.trim() || '';
+    const priority = maintenancePriorityInput?.value || '';
+    const inspectionStatus = maintenanceInspectionStatusInput?.value || '';
+    const nextDueDate = maintenanceNextDueDateInput?.value || null;
     const correctedPsiInput = document.querySelector('#maintenance-corrected-psi');
     const correctedPsi = correctedPsiInput && correctedPsiInput.value !== '' ? Number(correctedPsiInput.value) : null;
     const isReplacement = type.toLowerCase().includes('replace');
@@ -4205,7 +5454,11 @@ if (maintenanceForm) {
             date,
             notes,
             replacementProductId,
-            correctedPsi
+            correctedPsi,
+            technicianName,
+            priority,
+            inspectionStatus,
+            nextDueDate
           })
         });
 
@@ -4231,6 +5484,10 @@ if (maintenanceForm) {
       date,
       notes,
       replacementProductId,
+      technicianName,
+      priority,
+      inspectionStatus,
+      nextDueDate,
       correctedPsi,
       createdAt: new Date().toISOString()
     };
@@ -4249,12 +5506,14 @@ if (maintenanceForm) {
         return;
       }
 
-      if (Number(replacementProduct.stock) <= 0) {
+      const replacementQuantity = Math.max(1, Number(filter.filterQuantity) || 1);
+
+      if (Number(replacementProduct.stock) < replacementQuantity) {
         alert('No stock available for the selected replacement filter');
         return;
       }
 
-      replacementProduct.stock = Number(replacementProduct.stock) - 1;
+      replacementProduct.stock = Number(replacementProduct.stock) - replacementQuantity;
 
       const replacementDate = date ? new Date(date) : new Date();
       const lifeMonths = Number(replacementProduct.lifeMonths || getDefaultLifeMonths(replacementProduct.category));
@@ -4265,12 +5524,29 @@ if (maintenanceForm) {
 
       filter.productId = replacementProduct.id;
       filter.productName = replacementProduct.name;
+      filter.reorderNumber = replacementProduct.reorderNumber || '';
+      filter.filterType = replacementProduct.filterType || replacementProduct.category || '';
+      filter.vendorName = replacementProduct.vendorName || '';
       filter.cost = Number(replacementProduct.unitCost || 0);
       filter.lifeMonths = lifeMonths;
       filter.installedAt = replacementDate.toISOString();
       filter.dueDate = newDueDate.toISOString();
       filter.psi = null;
       filter.psiHistory = [];
+
+      const usage = inventoryUsage.find(entry => Number(entry.inventoryId) === Number(replacementProduct.id));
+      if (usage) {
+        usage.totalUsed += replacementQuantity;
+        usage.events += 1;
+        usage.lastUsedAt = replacementDate.toISOString();
+      } else {
+        inventoryUsage.push({
+          inventoryId: replacementProduct.id,
+          totalUsed: replacementQuantity,
+          events: 1,
+          lastUsedAt: replacementDate.toISOString()
+        });
+      }
 
       saveLocalData();
     }
@@ -4317,6 +5593,27 @@ if (maintenanceForm) {
     }
 
     maintenanceRecords.push(record);
+    if (technicianName && !technicians.some(technician => technician.name.toLowerCase() === technicianName.toLowerCase())) {
+      technicians.push({
+        id: Date.now() + 1,
+        name: technicianName,
+        role: 'Technician',
+        active: true,
+        createdAt: new Date().toISOString()
+      });
+    }
+    if (inspectionStatus || type.toLowerCase().includes('inspection') || type.toLowerCase().includes('review')) {
+      inspections.push({
+        id: Date.now() + 2,
+        machineId,
+        filterId,
+        inspectionType: type,
+        result: inspectionStatus,
+        notes,
+        psiReading: correctedPsi,
+        inspectedAt: date ? new Date(date).toISOString() : new Date().toISOString()
+      });
+    }
     saveLocalData();
     maintenanceForm.reset();
     renderApp();

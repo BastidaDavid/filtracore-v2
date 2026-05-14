@@ -20,8 +20,10 @@
       <a href="#dashboard" class="active">Dashboard</a>
       <a href="#machines">Machines</a>
       <a href="#inventory">Inventory</a>
+      <a href="#suppliers">Suppliers</a>
       <a href="#filters">Filters</a>
       <a href="#maintenance">Maintenance</a>
+      <a href="#import">Import</a>
       <a href="#reports">Reports</a>
       <a href="#accounts" id="accounts-nav" hidden>Accounts</a>
     </nav>
@@ -117,11 +119,11 @@
         <img src="img/logo.png" alt="FiltraCore Logo" class="login-logo" />
         <span id="restaurant-context-label" class="section-label">Bastida Systems Cerebro</span>
         <h2 id="restaurant-title">Choose Restaurant</h2>
-        <p id="restaurant-subtitle">Select the business workspace you want to operate. Each restaurant opens with its own machines, filters, inventory, maintenance history, and reports.</p>
+        <p id="restaurant-subtitle">Select the restaurant or venue you want to operate. Each one opens with its own machines, filters, inventory, maintenance history, and reports.</p>
         <div class="restaurant-summary-grid" aria-label="Workspace summary">
           <div>
             <strong id="restaurant-total-workspaces">0</strong>
-            <span>Workspaces</span>
+            <span>Restaurants</span>
           </div>
           <div>
             <strong id="restaurant-total-machines">0</strong>
@@ -140,9 +142,9 @@
         <div class="restaurant-panel">
           <div class="report-card-header">
             <div>
-              <span class="section-label">Available Workspaces</span>
+              <span class="section-label">Available Restaurants</span>
               <h3>Restaurants</h3>
-              <p>Open the exact operation you want to manage.</p>
+              <p>Open the exact restaurant or venue you want to manage.</p>
             </div>
             <button type="button" id="refresh-restaurants" class="secondary-btn">Refresh</button>
           </div>
@@ -369,6 +371,42 @@
     </section>
 
 
+    <section id="enterprise-overview" class="enterprise-overview">
+      <article class="enterprise-panel facility-panel">
+        <div class="panel-heading panel-heading-clean">
+          <span class="section-label">Restaurants & Venues</span>
+          <h3>Filters by Location</h3>
+          <p>Each restaurant grouped with its machines, reorder numbers, filter types, and quantities.</p>
+        </div>
+        <div id="facility-overview-list" class="facility-overview-list">
+          <p class="empty-state">No facility data yet.</p>
+        </div>
+      </article>
+
+      <article class="enterprise-panel">
+        <div class="panel-heading panel-heading-clean">
+          <span class="section-label">PSI Analytics</span>
+          <h3>Pressure Intelligence</h3>
+          <p>Current pressure range, watch items, and readings outside expected range.</p>
+        </div>
+        <div id="psi-analytics-grid" class="insight-grid">
+          <p class="empty-state">No PSI data yet.</p>
+        </div>
+      </article>
+
+      <article class="enterprise-panel">
+        <div class="panel-heading panel-heading-clean">
+          <span class="section-label">Upcoming Replacements</span>
+          <h3>Preventive Schedule</h3>
+          <p>Filters due soon, critical replacements, and next maintenance actions.</p>
+        </div>
+        <div id="upcoming-replacements-list" class="upcoming-replacements-list">
+          <p class="empty-state">No upcoming replacements.</p>
+        </div>
+      </article>
+    </section>
+
+
     <section id="machines" class="section-card module-section machines-section" style="display:none;">
       <div class="section-header module-hero">
         <div class="module-title-row">
@@ -426,6 +464,11 @@
         </div>
 
         <div class="form-field">
+          <label for="machine-category">Equipment Category</label>
+          <input type="text" id="machine-category" placeholder="HVAC, beverage, water, kitchen..." />
+        </div>
+
+        <div class="form-field">
           <label for="machine-location">Location</label>
           <input type="text" id="machine-location" placeholder="Example: Main Bar" required />
         </div>
@@ -443,6 +486,31 @@
         <div class="form-field">
           <label for="machine-model">Model</label>
           <input type="text" id="machine-model" placeholder="Example: HID312A" required />
+        </div>
+
+        <div class="form-field">
+          <label for="machine-serial-number">Serial Number</label>
+          <input type="text" id="machine-serial-number" placeholder="Manufacturer serial number" />
+        </div>
+
+        <div class="form-field">
+          <label for="machine-building">Building</label>
+          <input type="text" id="machine-building" placeholder="Tower, casino, kitchen, warehouse..." />
+        </div>
+
+        <div class="form-field">
+          <label for="machine-floor">Floor</label>
+          <input type="text" id="machine-floor" placeholder="Example: 1, Mezzanine, B2" />
+        </div>
+
+        <div class="form-field">
+          <label for="machine-zone">Zone</label>
+          <input type="text" id="machine-zone" placeholder="Example: Front bar, prep line..." />
+        </div>
+
+        <div class="form-field">
+          <label for="machine-exact-location">Exact Location</label>
+          <input type="text" id="machine-exact-location" placeholder="Wall, room, station, or QR install point" />
         </div>
 
         <div class="form-field">
@@ -534,6 +602,21 @@
             </div>
 
             <div class="form-field">
+              <label for="inventory-reorder-number">Reorder Number</label>
+              <input type="text" id="inventory-reorder-number" placeholder="Example: EV9781-12" />
+            </div>
+
+            <div class="form-field">
+              <label for="inventory-filter-type">Filter Type</label>
+              <input type="text" id="inventory-filter-type" placeholder="Pentair Everpure, CU-S, 3M..." />
+            </div>
+
+            <div class="form-field">
+              <label for="inventory-vendor-name">Vendor</label>
+              <input type="text" id="inventory-vendor-name" placeholder="Supplier or distributor" />
+            </div>
+
+            <div class="form-field">
               <label for="inventory-stock">Stock Quantity</label>
               <input type="number" id="inventory-stock" placeholder="Example: 5" required />
             </div>
@@ -570,6 +653,247 @@
 
           <div id="inventory-list" class="module-list premium-list inventory-list-clean">
             <p class="empty-state">No inventory items registered yet.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="suppliers" class="section-card module-section suppliers-section" style="display:none;">
+      <div class="section-header module-hero">
+        <div class="module-title-row">
+          <div class="module-icon" aria-hidden="true">SP</div>
+          <div>
+            <span class="section-label">Procurement Intelligence</span>
+            <h2>Suppliers</h2>
+            <p>Connect inventory, pricing, preferred vendors, and purchase orders in one operational view.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="module-kpi-row suppliers-kpis">
+        <div class="module-kpi-card">
+          <span>Total Suppliers</span>
+          <strong id="suppliers-total-kpi">0</strong>
+          <small>Active and inactive vendors</small>
+        </div>
+
+        <div class="module-kpi-card success">
+          <span>Monitored Products</span>
+          <strong id="supplier-products-kpi">0</strong>
+          <small>Inventory items with prices</small>
+        </div>
+
+        <div class="module-kpi-card">
+          <span>Price Changes</span>
+          <strong id="supplier-price-changes-kpi">0</strong>
+          <small>Tracked against last price</small>
+        </div>
+
+        <div class="module-kpi-card warning">
+          <span>Increase Alerts</span>
+          <strong id="supplier-increase-alerts-kpi">0</strong>
+          <small>Products trending up</small>
+        </div>
+
+        <div class="module-kpi-card critical">
+          <span>Critical Products</span>
+          <strong id="supplier-critical-products-kpi">0</strong>
+          <small>At or below reorder level</small>
+        </div>
+
+        <div class="module-kpi-card">
+          <span>Best Supplier</span>
+          <strong id="supplier-best-suggestion-kpi">N/A</strong>
+          <small>Most frequent lowest price</small>
+        </div>
+      </div>
+
+      <div class="supplier-toolbar">
+        <input
+          type="search"
+          id="suppliers-search"
+          placeholder="Search supplier, product, category, SKU or status..."
+          autocomplete="off"
+        />
+        <span id="suppliers-results-count">0 records</span>
+      </div>
+
+      <div class="suppliers-workspace">
+        <div class="module-panel form-panel supplier-entry-panel">
+          <div class="panel-heading panel-heading-clean">
+            <h3>Add Supplier</h3>
+            <p>Vendor profile and account notes.</p>
+          </div>
+
+          <form id="supplier-form" class="module-form premium-form supplier-form-grid">
+            <div class="form-field">
+              <label for="supplier-name">Supplier Name</label>
+              <input type="text" id="supplier-name" placeholder="Example: Sysco" required />
+            </div>
+
+            <div class="form-field">
+              <label for="supplier-contact">Contact</label>
+              <input type="text" id="supplier-contact" placeholder="Account manager" />
+            </div>
+
+            <div class="form-field">
+              <label for="supplier-email">Email</label>
+              <input type="email" id="supplier-email" placeholder="orders@supplier.com" />
+            </div>
+
+            <div class="form-field">
+              <label for="supplier-phone">Phone</label>
+              <input type="tel" id="supplier-phone" placeholder="(702) 555-0100" />
+            </div>
+
+            <div class="form-field">
+              <label for="supplier-website">Website</label>
+              <input type="url" id="supplier-website" placeholder="https://supplier.com" />
+            </div>
+
+            <div class="form-field">
+              <label for="supplier-category">Category</label>
+              <input type="text" id="supplier-category" placeholder="Foodservice, marketplace, OEM..." />
+            </div>
+
+            <div class="form-field">
+              <label for="supplier-status">Status</label>
+              <select id="supplier-status">
+                <option value="active">Active</option>
+                <option value="inactive">Inactive</option>
+              </select>
+            </div>
+
+            <div class="form-field full-span">
+              <label for="supplier-notes">Notes</label>
+              <textarea id="supplier-notes" placeholder="Contract terms, delivery windows, account notes..."></textarea>
+            </div>
+
+            <button type="submit">Save Supplier</button>
+          </form>
+        </div>
+
+        <div class="module-panel form-panel supplier-price-panel">
+          <div class="panel-heading panel-heading-clean">
+            <h3>Track Product Price</h3>
+            <p>Attach suppliers to existing inventory items.</p>
+          </div>
+
+          <form id="supplier-product-form" class="module-form premium-form supplier-product-form-grid">
+            <div class="form-field">
+              <label for="supplier-product-inventory">Inventory Item</label>
+              <select id="supplier-product-inventory" required>
+                <option value="">Select item</option>
+              </select>
+            </div>
+
+            <div class="form-field">
+              <label for="supplier-product-supplier">Supplier</label>
+              <select id="supplier-product-supplier" required>
+                <option value="">Select supplier</option>
+              </select>
+            </div>
+
+            <div class="form-field">
+              <label for="supplier-product-sku">Supplier SKU</label>
+              <input type="text" id="supplier-product-sku" placeholder="Vendor SKU" />
+            </div>
+
+            <div class="form-field">
+              <label for="supplier-product-price">Current Price</label>
+              <input type="number" id="supplier-product-price" placeholder="0.00" step="0.01" min="0" required />
+            </div>
+
+            <div class="form-field full-span">
+              <label for="supplier-product-notes">Notes</label>
+              <textarea id="supplier-product-notes" placeholder="Quote source, pack size, lead time..."></textarea>
+            </div>
+
+            <button type="submit">Save Price</button>
+          </form>
+        </div>
+
+        <div class="module-panel supplier-comparison-panel">
+          <div class="panel-heading panel-heading-clean">
+            <h3>Smart Comparison</h3>
+            <p>Lowest price, spread, and recommended supplier by item.</p>
+          </div>
+          <div id="supplier-comparison-list" class="supplier-comparison-list">
+            <p class="empty-state">No supplier pricing yet.</p>
+          </div>
+        </div>
+
+        <div class="module-panel list-panel supplier-products-panel">
+          <div class="panel-heading panel-heading-clean">
+            <h3>Price Tracking</h3>
+            <p>Current price, last price, and movement by supplier.</p>
+          </div>
+          <div id="supplier-products-list" class="module-list premium-list supplier-products-list">
+            <p class="empty-state">No supplier products tracked yet.</p>
+          </div>
+        </div>
+
+        <div class="module-panel form-panel purchase-order-panel">
+          <div class="panel-heading panel-heading-clean">
+            <h3>Purchase Orders</h3>
+            <p>Create draft orders from tracked supplier products.</p>
+          </div>
+
+          <form id="purchase-order-form" class="module-form premium-form purchase-order-form-grid">
+            <div class="form-field">
+              <label for="purchase-order-supplier">Supplier</label>
+              <select id="purchase-order-supplier" required>
+                <option value="">Select supplier</option>
+              </select>
+            </div>
+
+            <div class="form-field">
+              <label for="purchase-order-product">Product</label>
+              <select id="purchase-order-product">
+                <option value="">Optional tracked product</option>
+              </select>
+            </div>
+
+            <div class="form-field">
+              <label for="purchase-order-quantity">Quantity</label>
+              <input type="number" id="purchase-order-quantity" value="1" min="1" />
+            </div>
+
+            <div class="form-field">
+              <label for="purchase-order-status">Status</label>
+              <select id="purchase-order-status">
+                <option>Draft</option>
+                <option>Sent</option>
+                <option>Received</option>
+                <option>Cancelled</option>
+              </select>
+            </div>
+
+            <div class="form-field">
+              <label for="purchase-order-expected-date">Expected Date</label>
+              <input type="date" id="purchase-order-expected-date" />
+            </div>
+
+            <div class="form-field full-span">
+              <label for="purchase-order-notes">Notes</label>
+              <textarea id="purchase-order-notes" placeholder="Reference, delivery notes, receiving instructions..."></textarea>
+            </div>
+
+            <button type="submit">Create PO</button>
+          </form>
+
+          <div id="purchase-orders-list" class="purchase-orders-list">
+            <p class="empty-state">No purchase orders yet.</p>
+          </div>
+        </div>
+
+        <div class="module-panel list-panel suppliers-directory-panel">
+          <div class="panel-heading panel-heading-clean">
+            <h3>Supplier Directory</h3>
+            <p>Contacts, categories, and account status.</p>
+          </div>
+          <div id="suppliers-list" class="module-list premium-list suppliers-list">
+            <p class="empty-state">No suppliers registered yet.</p>
           </div>
         </div>
       </div>
@@ -636,8 +960,23 @@
             </div>
 
             <div class="form-field">
+              <label for="filter-quantity">Filter Quantity</label>
+              <input type="number" id="filter-quantity" min="1" value="1" required />
+            </div>
+
+            <div class="form-field">
               <label for="filter-psi">Current PSI</label>
               <input type="number" id="filter-psi" placeholder="Optional baseline PSI" />
+            </div>
+
+            <div class="form-field">
+              <label for="filter-psi-min">PSI Min</label>
+              <input type="number" id="filter-psi-min" placeholder="Example: 50" />
+            </div>
+
+            <div class="form-field">
+              <label for="filter-psi-max">PSI Max</label>
+              <input type="number" id="filter-psi-max" placeholder="Example: 70" />
             </div>
 
             <div class="form-field">
@@ -754,6 +1093,32 @@
             </div>
 
             <div class="form-field">
+              <label for="maintenance-technician-name">Technician</label>
+              <input type="text" id="maintenance-technician-name" placeholder="Technician or vendor name" />
+            </div>
+
+            <div class="form-field">
+              <label for="maintenance-priority">Priority</label>
+              <select id="maintenance-priority">
+                <option value="">Auto</option>
+                <option value="Routine">Routine</option>
+                <option value="Due Soon">Due Soon</option>
+                <option value="Critical">Critical</option>
+              </select>
+            </div>
+
+            <div class="form-field">
+              <label for="maintenance-inspection-status">Inspection Result</label>
+              <select id="maintenance-inspection-status">
+                <option value="">Not recorded</option>
+                <option value="Pass">Pass</option>
+                <option value="Watch">Watch</option>
+                <option value="Fail">Fail</option>
+                <option value="Corrected">Corrected</option>
+              </select>
+            </div>
+
+            <div class="form-field">
               <label for="maintenance-replacement-product">Replacement Filter</label>
               <select id="maintenance-replacement-product">
                 <option value="">Only select if replacing filter</option>
@@ -780,6 +1145,11 @@
             <div class="form-field">
               <label for="maintenance-date">Date</label>
               <input type="date" id="maintenance-date" required />
+            </div>
+
+            <div class="form-field">
+              <label for="maintenance-next-due-date">Next Due Date</label>
+              <input type="date" id="maintenance-next-due-date" />
             </div>
 
             <div class="form-field form-field-wide">
@@ -823,6 +1193,58 @@
 
           <div id="maintenance-list" class="module-list premium-list maintenance-list-clean">
             <p class="empty-state">No maintenance records yet.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="import" class="section-card module-section import-section" style="display:none;">
+      <div class="section-header module-hero">
+        <div class="module-title-row">
+          <div class="module-icon" aria-hidden="true">AI</div>
+          <div>
+            <span class="section-label">Smart Import</span>
+            <h2>AI Filter Sheet Import</h2>
+            <p>Process PDFs, photos, spreadsheets, CSVs, or pasted filter sheets and generate machine, filter, facility, and inventory records.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="module-workspace import-workspace">
+        <div class="module-panel form-panel">
+          <div class="panel-heading panel-heading-clean">
+            <h3>Import Source</h3>
+            <p>Upload a file or paste extracted sheet text. Photos use AI vision when the API key is configured.</p>
+          </div>
+
+          <form id="smart-import-form" class="module-form premium-form smart-import-form">
+            <div class="form-field">
+              <label for="smart-import-file">File</label>
+              <input type="file" id="smart-import-file" accept=".csv,.tsv,.xlsx,.xls,.pdf,image/*,text/plain" />
+            </div>
+
+            <div class="form-field form-field-wide">
+              <label for="smart-import-text">Pasted Sheet Text</label>
+              <textarea id="smart-import-text" rows="10" placeholder="Venue&#9;Machine&#9;ReOrder#&#9;Filter Type&#9;FILTER AMOUNT"></textarea>
+            </div>
+
+            <div class="import-actions">
+              <button type="submit">Preview Import</button>
+              <button type="button" id="apply-smart-import" class="secondary-btn" disabled>Apply Import</button>
+            </div>
+
+            <p id="smart-import-status" class="login-error" role="alert"></p>
+          </form>
+        </div>
+
+        <div class="module-panel list-panel">
+          <div class="panel-heading panel-heading-clean">
+            <h3>Detected Records</h3>
+            <p>Review venue, machine, reorder number, filter type, and quantity before creating records.</p>
+          </div>
+
+          <div id="smart-import-preview" class="smart-import-preview">
+            <p class="empty-state">No import preview yet.</p>
           </div>
         </div>
       </div>

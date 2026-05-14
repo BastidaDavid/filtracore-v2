@@ -6,6 +6,8 @@ const express = require('express')
 const cors = require('cors')
 const { Pool } = require('pg')
 const QRCode = require('qrcode')
+const XLSX = require('xlsx')
+const { PDFParse } = require('pdf-parse')
 
 const app = express()
 const port = process.env.PORT || 3000
@@ -22,7 +24,7 @@ app.use((req, res, next) => {
   next()
 })
 app.use(cors())
-app.use(express.json({ limit: '2mb' }))
+app.use(express.json({ limit: '12mb' }))
 
 const pool = new Pool({
   connectionString: databaseUrl,
@@ -52,7 +54,7 @@ const demoPassword = process.env.BASTIDA_DEMO_PASSWORD || 'LineOpsDemo1!'
 const syncSecret = String(process.env.BASTIDA_SYNC_SECRET || '').trim()
 const beoflowApiBaseURL = String(process.env.BEOFLOW_API_BASE_URL || '').trim().replace(/\/+$/, '')
 const standardMachineLimit = 5
-const unlimitedMachineClientEmails = new Set([stratAccountEmail, westgateAccountEmail])
+const unlimitedMachineClientEmails = new Set([stratAccountEmail, westgateAccountEmail, demoEmail])
 const unifiedAccountAliases = new Map([
   ['bastida01', brainEmail],
   ['westgate', westgateAccountEmail],
@@ -238,13 +240,22 @@ function mapAdminUser(row) {
 function mapMachine(row) {
   return {
     id: Number(row.machine_id),
+    facilityId: row.facility_id === null || row.facility_id === undefined ? null : Number(row.facility_id),
     name: row.name || '',
     type: row.type || '',
+    category: row.category || row.type || '',
     location: row.location || '',
     department: row.department || '',
     brand: row.brand || '',
     model: row.model || '',
+    serialNumber: row.serial_number || '',
+    building: row.building || '',
+    floor: row.floor || '',
+    zone: row.zone || '',
+    exactLocation: row.exact_location || row.location || '',
     assetId: row.asset_id || '',
+    qrPayload: row.qr_payload || getMachineQRPayload(row.machine_id),
+    healthStatus: row.health_status || 'Unknown',
     createdAt: row.created_at
   }
 }
@@ -262,6 +273,10 @@ function mapInventory(row) {
     id: Number(row.inventory_id),
     name: row.name || '',
     category: row.category || '',
+    reorderNumber: row.reorder_number || '',
+    filterType: row.filter_type || row.category || '',
+    vendorName: row.vendor_name || '',
+    vendorContact: row.vendor_contact || '',
     stock: toNumber(row.stock),
     unitCost: toNumber(row.unit_cost),
     reorderLevel: toNumber(row.reorder_level),
@@ -278,6 +293,12 @@ function mapFilter(row, psiHistory = []) {
     machineId: Number(row.machine_id),
     productId: row.inventory_id === null || row.inventory_id === undefined ? null : Number(row.inventory_id),
     productName: row.product_name || 'Filter',
+    reorderNumber: row.reorder_number || row.product_reorder_number || '',
+    filterType: row.filter_type || row.product_filter_type || row.product_category || '',
+    filterQuantity: toNumber(row.filter_quantity, 1),
+    psiMin: toNullableNumber(row.psi_min),
+    psiMax: toNullableNumber(row.psi_max),
+    vendorName: row.vendor_name || row.product_vendor_name || '',
     cost: toNumber(row.unit_cost),
     lifeMonths: toNumber(row.life_months, getDefaultLifeMonths(row.product_category)),
     psi,
@@ -292,8 +313,14 @@ function mapFilter(row, psiHistory = []) {
 function mapMaintenance(row) {
   return {
     id: Number(row.maintenance_id),
+    logId: row.log_id === null || row.log_id === undefined ? null : Number(row.log_id),
     machineId: Number(row.machine_id),
     filterId: row.filter_id === null || row.filter_id === undefined ? null : Number(row.filter_id),
+    technicianId: row.technician_id === null || row.technician_id === undefined ? null : Number(row.technician_id),
+    technicianName: row.technician_name || '',
+    inspectionStatus: row.inspection_status || '',
+    priority: row.priority || '',
+    nextDueDate: row.next_due_date || null,
     type: row.maintenance_type || 'General',
     notes: row.notes || '',
     currentPsi: toNullableNumber(row.current_psi),
@@ -306,6 +333,137 @@ function mapMaintenance(row) {
     replacedWith: row.replaced_with || '',
     date: row.performed_at,
     createdAt: row.performed_at
+  }
+}
+
+function mapFacility(row) {
+  return {
+    id: Number(row.facility_id),
+    name: row.name || '',
+    venueType: row.venue_type || '',
+    building: row.building || '',
+    address: row.address || '',
+    createdAt: row.created_at
+  }
+}
+
+function mapTechnician(row) {
+  return {
+    id: Number(row.technician_id),
+    name: row.name || '',
+    email: row.email || '',
+    phone: row.phone || '',
+    role: row.role || 'Technician',
+    active: row.active !== false,
+    createdAt: row.created_at
+  }
+}
+
+function mapInspection(row) {
+  return {
+    id: Number(row.inspection_id),
+    machineId: row.machine_id === null || row.machine_id === undefined ? null : Number(row.machine_id),
+    filterId: row.filter_id === null || row.filter_id === undefined ? null : Number(row.filter_id),
+    technicianId: row.technician_id === null || row.technician_id === undefined ? null : Number(row.technician_id),
+    inspectionType: row.inspection_type || 'General Inspection',
+    result: row.result || '',
+    notes: row.notes || '',
+    psiReading: toNullableNumber(row.psi_reading),
+    inspectedAt: row.inspected_at,
+    createdAt: row.created_at
+  }
+}
+
+function mapSupplier(row) {
+  return {
+    id: Number(row.supplier_id),
+    name: row.name || '',
+    contact: row.contact_name || '',
+    email: row.email || '',
+    phone: row.phone || '',
+    website: row.website || '',
+    category: row.category || '',
+    notes: row.notes || '',
+    status: row.status || 'active',
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
+  }
+}
+
+function mapSupplierProduct(row) {
+  const currentPrice = toNumber(row.current_price)
+  const lastPrice = row.last_price === null || row.last_price === undefined ? null : toNumber(row.last_price)
+  const variationPercent = lastPrice && lastPrice > 0
+    ? ((currentPrice - lastPrice) / lastPrice) * 100
+    : 0
+
+  return {
+    id: Number(row.supplier_product_id),
+    supplierId: Number(row.supplier_id),
+    inventoryId: Number(row.inventory_id),
+    supplierName: row.supplier_name || '',
+    inventoryName: row.inventory_name || '',
+    inventoryCategory: row.inventory_category || '',
+    stock: toNumber(row.stock),
+    reorderLevel: toNumber(row.reorder_level),
+    supplierSku: row.supplier_sku || '',
+    productName: row.product_name || row.inventory_name || '',
+    currentPrice,
+    lastPrice,
+    variationPercent,
+    direction: variationPercent > 0 ? 'up' : variationPercent < 0 ? 'down' : 'flat',
+    lastUpdatedAt: row.last_updated_at,
+    notes: row.notes || '',
+    status: row.status || 'active',
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
+  }
+}
+
+function mapPriceHistory(row) {
+  return {
+    id: Number(row.price_history_id),
+    supplierProductId: Number(row.supplier_product_id),
+    supplierId: Number(row.supplier_id),
+    inventoryId: Number(row.inventory_id),
+    price: toNumber(row.price),
+    previousPrice: row.previous_price === null || row.previous_price === undefined ? null : toNumber(row.previous_price),
+    changedAt: row.changed_at,
+    source: row.source || '',
+    notes: row.notes || ''
+  }
+}
+
+function mapPurchaseOrder(row) {
+  return {
+    id: Number(row.purchase_order_id),
+    supplierId: row.supplier_id === null || row.supplier_id === undefined ? null : Number(row.supplier_id),
+    supplierName: row.supplier_name || '',
+    poNumber: row.po_number || '',
+    status: row.status || 'Draft',
+    expectedDate: row.expected_date,
+    sentAt: row.sent_at,
+    receivedAt: row.received_at,
+    notes: row.notes || '',
+    totalAmount: toNumber(row.total_amount),
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    items: []
+  }
+}
+
+function mapPurchaseOrderItem(row) {
+  return {
+    id: Number(row.purchase_order_item_id),
+    purchaseOrderId: Number(row.purchase_order_id),
+    inventoryId: row.inventory_id === null || row.inventory_id === undefined ? null : Number(row.inventory_id),
+    supplierProductId: row.supplier_product_id === null || row.supplier_product_id === undefined ? null : Number(row.supplier_product_id),
+    inventoryName: row.inventory_name || '',
+    quantity: toNumber(row.quantity),
+    unitPrice: toNumber(row.unit_price),
+    lineTotal: toNumber(row.line_total),
+    receivedQuantity: toNumber(row.received_quantity),
+    notes: row.notes || ''
   }
 }
 
@@ -347,16 +505,35 @@ async function ensureSchema() {
       PRIMARY KEY (user_id, tenant_id)
     );
 
+    CREATE TABLE IF NOT EXISTS facilities (
+      facility_id SERIAL PRIMARY KEY,
+      tenant_id INTEGER REFERENCES tenants(tenant_id) ON DELETE CASCADE,
+      name TEXT NOT NULL,
+      venue_type TEXT,
+      building TEXT,
+      address TEXT,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+
     CREATE TABLE IF NOT EXISTS machines (
       machine_id SERIAL PRIMARY KEY,
       tenant_id INTEGER REFERENCES tenants(tenant_id) ON DELETE CASCADE,
+      facility_id INTEGER REFERENCES facilities(facility_id) ON DELETE SET NULL,
       name TEXT NOT NULL,
       type TEXT NOT NULL,
+      category TEXT,
       location TEXT NOT NULL,
       department TEXT,
       brand TEXT,
       model TEXT,
+      serial_number TEXT,
+      building TEXT,
+      floor TEXT,
+      zone TEXT,
+      exact_location TEXT,
       asset_id TEXT,
+      qr_payload TEXT,
+      health_status TEXT DEFAULT 'Unknown',
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
 
@@ -365,6 +542,10 @@ async function ensureSchema() {
       tenant_id INTEGER REFERENCES tenants(tenant_id) ON DELETE CASCADE,
       name TEXT NOT NULL,
       category TEXT NOT NULL,
+      reorder_number TEXT,
+      filter_type TEXT,
+      vendor_name TEXT,
+      vendor_contact TEXT,
       stock INTEGER DEFAULT 0,
       unit_cost NUMERIC(10,2) DEFAULT 0,
       reorder_level INTEGER DEFAULT 0,
@@ -378,10 +559,25 @@ async function ensureSchema() {
       machine_id INTEGER REFERENCES machines(machine_id) ON DELETE CASCADE,
       inventory_id INTEGER REFERENCES inventory(inventory_id) ON DELETE SET NULL,
       psi INTEGER,
+      psi_min INTEGER,
+      psi_max INTEGER,
+      filter_quantity INTEGER DEFAULT 1,
+      vendor_name TEXT,
       life_months INTEGER NOT NULL,
       installed_at DATE NOT NULL,
       due_date DATE NOT NULL,
       status TEXT DEFAULT 'Healthy',
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS technicians (
+      technician_id SERIAL PRIMARY KEY,
+      tenant_id INTEGER REFERENCES tenants(tenant_id) ON DELETE CASCADE,
+      name TEXT NOT NULL,
+      email TEXT,
+      phone TEXT,
+      role TEXT DEFAULT 'Technician',
+      active BOOLEAN DEFAULT TRUE,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
 
@@ -390,6 +586,11 @@ async function ensureSchema() {
       tenant_id INTEGER REFERENCES tenants(tenant_id) ON DELETE CASCADE,
       machine_id INTEGER REFERENCES machines(machine_id) ON DELETE CASCADE,
       filter_id INTEGER REFERENCES filters(filter_id) ON DELETE SET NULL,
+      technician_id INTEGER REFERENCES technicians(technician_id) ON DELETE SET NULL,
+      technician_name TEXT,
+      inspection_status TEXT,
+      priority TEXT,
+      next_due_date DATE,
       maintenance_type TEXT,
       notes TEXT,
       current_psi INTEGER,
@@ -399,27 +600,239 @@ async function ensureSchema() {
       replaced_with TEXT,
       performed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
+
+    CREATE TABLE IF NOT EXISTS maintenance_logs (
+      log_id SERIAL PRIMARY KEY,
+      legacy_maintenance_id INTEGER,
+      tenant_id INTEGER REFERENCES tenants(tenant_id) ON DELETE CASCADE,
+      machine_id INTEGER REFERENCES machines(machine_id) ON DELETE CASCADE,
+      filter_id INTEGER REFERENCES filters(filter_id) ON DELETE SET NULL,
+      technician_id INTEGER REFERENCES technicians(technician_id) ON DELETE SET NULL,
+      technician_name TEXT,
+      maintenance_type TEXT,
+      priority TEXT,
+      notes TEXT,
+      current_psi INTEGER,
+      corrected_psi INTEGER,
+      replacement_product_id INTEGER REFERENCES inventory(inventory_id) ON DELETE SET NULL,
+      replaced_from TEXT,
+      replaced_with TEXT,
+      performed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      next_due_date DATE,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS inspections (
+      inspection_id SERIAL PRIMARY KEY,
+      tenant_id INTEGER REFERENCES tenants(tenant_id) ON DELETE CASCADE,
+      machine_id INTEGER REFERENCES machines(machine_id) ON DELETE CASCADE,
+      filter_id INTEGER REFERENCES filters(filter_id) ON DELETE SET NULL,
+      technician_id INTEGER REFERENCES technicians(technician_id) ON DELETE SET NULL,
+      inspection_type TEXT DEFAULT 'General Inspection',
+      result TEXT,
+      notes TEXT,
+      psi_reading INTEGER,
+      inspected_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS inventory_usage (
+      usage_id SERIAL PRIMARY KEY,
+      tenant_id INTEGER REFERENCES tenants(tenant_id) ON DELETE CASCADE,
+      inventory_id INTEGER REFERENCES inventory(inventory_id) ON DELETE SET NULL,
+      machine_id INTEGER REFERENCES machines(machine_id) ON DELETE SET NULL,
+      filter_id INTEGER REFERENCES filters(filter_id) ON DELETE SET NULL,
+      quantity INTEGER NOT NULL DEFAULT 1,
+      reason TEXT DEFAULT 'maintenance',
+      used_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS import_batches (
+      import_batch_id SERIAL PRIMARY KEY,
+      tenant_id INTEGER REFERENCES tenants(tenant_id) ON DELETE CASCADE,
+      source_name TEXT,
+      source_type TEXT,
+      detected_records INTEGER DEFAULT 0,
+      applied_records INTEGER DEFAULT 0,
+      ai_used BOOLEAN DEFAULT FALSE,
+      warnings JSONB DEFAULT '[]'::jsonb,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS suppliers (
+      supplier_id SERIAL PRIMARY KEY,
+      tenant_id INTEGER REFERENCES tenants(tenant_id) ON DELETE CASCADE,
+      name TEXT NOT NULL,
+      contact_name TEXT,
+      email TEXT,
+      phone TEXT,
+      website TEXT,
+      category TEXT,
+      notes TEXT,
+      status TEXT DEFAULT 'active',
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS supplier_products (
+      supplier_product_id SERIAL PRIMARY KEY,
+      tenant_id INTEGER REFERENCES tenants(tenant_id) ON DELETE CASCADE,
+      supplier_id INTEGER REFERENCES suppliers(supplier_id) ON DELETE CASCADE,
+      inventory_id INTEGER REFERENCES inventory(inventory_id) ON DELETE CASCADE,
+      supplier_sku TEXT,
+      product_name TEXT,
+      current_price NUMERIC(10,2) DEFAULT 0,
+      last_price NUMERIC(10,2),
+      last_updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      notes TEXT,
+      status TEXT DEFAULT 'active',
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS purchase_orders (
+      purchase_order_id SERIAL PRIMARY KEY,
+      tenant_id INTEGER REFERENCES tenants(tenant_id) ON DELETE CASCADE,
+      supplier_id INTEGER REFERENCES suppliers(supplier_id) ON DELETE SET NULL,
+      po_number TEXT,
+      status TEXT DEFAULT 'Draft',
+      expected_date DATE,
+      sent_at TIMESTAMP,
+      received_at TIMESTAMP,
+      notes TEXT,
+      total_amount NUMERIC(10,2) DEFAULT 0,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS purchase_order_items (
+      purchase_order_item_id SERIAL PRIMARY KEY,
+      tenant_id INTEGER REFERENCES tenants(tenant_id) ON DELETE CASCADE,
+      purchase_order_id INTEGER REFERENCES purchase_orders(purchase_order_id) ON DELETE CASCADE,
+      inventory_id INTEGER REFERENCES inventory(inventory_id) ON DELETE SET NULL,
+      supplier_product_id INTEGER REFERENCES supplier_products(supplier_product_id) ON DELETE SET NULL,
+      quantity INTEGER NOT NULL DEFAULT 1,
+      unit_price NUMERIC(10,2) DEFAULT 0,
+      line_total NUMERIC(10,2) DEFAULT 0,
+      received_quantity INTEGER DEFAULT 0,
+      notes TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS price_history (
+      price_history_id SERIAL PRIMARY KEY,
+      tenant_id INTEGER REFERENCES tenants(tenant_id) ON DELETE CASCADE,
+      supplier_product_id INTEGER REFERENCES supplier_products(supplier_product_id) ON DELETE CASCADE,
+      supplier_id INTEGER REFERENCES suppliers(supplier_id) ON DELETE SET NULL,
+      inventory_id INTEGER REFERENCES inventory(inventory_id) ON DELETE SET NULL,
+      price NUMERIC(10,2) NOT NULL,
+      previous_price NUMERIC(10,2),
+      changed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      source TEXT DEFAULT 'manual',
+      notes TEXT
+    );
   `)
 
   await pool.query(`
     ALTER TABLE tenants ADD COLUMN IF NOT EXISTS logo_data_url TEXT;
     ALTER TABLE tenants ADD COLUMN IF NOT EXISTS identity_label TEXT;
+    ALTER TABLE facilities ADD COLUMN IF NOT EXISTS tenant_id INTEGER REFERENCES tenants(tenant_id) ON DELETE CASCADE;
+    ALTER TABLE facilities ADD COLUMN IF NOT EXISTS venue_type TEXT;
+    ALTER TABLE facilities ADD COLUMN IF NOT EXISTS building TEXT;
+    ALTER TABLE facilities ADD COLUMN IF NOT EXISTS address TEXT;
     ALTER TABLE machines ADD COLUMN IF NOT EXISTS tenant_id INTEGER REFERENCES tenants(tenant_id) ON DELETE CASCADE;
+    ALTER TABLE machines ADD COLUMN IF NOT EXISTS facility_id INTEGER REFERENCES facilities(facility_id) ON DELETE SET NULL;
+    ALTER TABLE machines ADD COLUMN IF NOT EXISTS category TEXT;
+    ALTER TABLE machines ADD COLUMN IF NOT EXISTS serial_number TEXT;
+    ALTER TABLE machines ADD COLUMN IF NOT EXISTS building TEXT;
+    ALTER TABLE machines ADD COLUMN IF NOT EXISTS floor TEXT;
+    ALTER TABLE machines ADD COLUMN IF NOT EXISTS zone TEXT;
+    ALTER TABLE machines ADD COLUMN IF NOT EXISTS exact_location TEXT;
+    ALTER TABLE machines ADD COLUMN IF NOT EXISTS qr_payload TEXT;
+    ALTER TABLE machines ADD COLUMN IF NOT EXISTS health_status TEXT DEFAULT 'Unknown';
     ALTER TABLE inventory ADD COLUMN IF NOT EXISTS tenant_id INTEGER REFERENCES tenants(tenant_id) ON DELETE CASCADE;
+    ALTER TABLE inventory ADD COLUMN IF NOT EXISTS reorder_number TEXT;
+    ALTER TABLE inventory ADD COLUMN IF NOT EXISTS filter_type TEXT;
+    ALTER TABLE inventory ADD COLUMN IF NOT EXISTS vendor_name TEXT;
+    ALTER TABLE inventory ADD COLUMN IF NOT EXISTS vendor_contact TEXT;
     ALTER TABLE filters ADD COLUMN IF NOT EXISTS tenant_id INTEGER REFERENCES tenants(tenant_id) ON DELETE CASCADE;
+    ALTER TABLE filters ADD COLUMN IF NOT EXISTS psi_min INTEGER;
+    ALTER TABLE filters ADD COLUMN IF NOT EXISTS psi_max INTEGER;
+    ALTER TABLE filters ADD COLUMN IF NOT EXISTS filter_quantity INTEGER DEFAULT 1;
+    ALTER TABLE filters ADD COLUMN IF NOT EXISTS vendor_name TEXT;
     ALTER TABLE maintenance ADD COLUMN IF NOT EXISTS tenant_id INTEGER REFERENCES tenants(tenant_id) ON DELETE CASCADE;
+    ALTER TABLE maintenance ADD COLUMN IF NOT EXISTS technician_id INTEGER REFERENCES technicians(technician_id) ON DELETE SET NULL;
+    ALTER TABLE maintenance ADD COLUMN IF NOT EXISTS technician_name TEXT;
+    ALTER TABLE maintenance ADD COLUMN IF NOT EXISTS inspection_status TEXT;
+    ALTER TABLE maintenance ADD COLUMN IF NOT EXISTS priority TEXT;
+    ALTER TABLE maintenance ADD COLUMN IF NOT EXISTS next_due_date DATE;
     ALTER TABLE inventory ADD COLUMN IF NOT EXISTS life_months INTEGER;
     ALTER TABLE maintenance ADD COLUMN IF NOT EXISTS replacement_product_id INTEGER REFERENCES inventory(inventory_id) ON DELETE SET NULL;
     ALTER TABLE maintenance ADD COLUMN IF NOT EXISTS replaced_from TEXT;
     ALTER TABLE maintenance ADD COLUMN IF NOT EXISTS replaced_with TEXT;
+    ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS tenant_id INTEGER REFERENCES tenants(tenant_id) ON DELETE CASCADE;
+    ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS contact_name TEXT;
+    ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS email TEXT;
+    ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS phone TEXT;
+    ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS website TEXT;
+    ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS category TEXT;
+    ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS notes TEXT;
+    ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'active';
+    ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
+    ALTER TABLE supplier_products ADD COLUMN IF NOT EXISTS tenant_id INTEGER REFERENCES tenants(tenant_id) ON DELETE CASCADE;
+    ALTER TABLE supplier_products ADD COLUMN IF NOT EXISTS supplier_sku TEXT;
+    ALTER TABLE supplier_products ADD COLUMN IF NOT EXISTS product_name TEXT;
+    ALTER TABLE supplier_products ADD COLUMN IF NOT EXISTS current_price NUMERIC(10,2) DEFAULT 0;
+    ALTER TABLE supplier_products ADD COLUMN IF NOT EXISTS last_price NUMERIC(10,2);
+    ALTER TABLE supplier_products ADD COLUMN IF NOT EXISTS last_updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
+    ALTER TABLE supplier_products ADD COLUMN IF NOT EXISTS notes TEXT;
+    ALTER TABLE supplier_products ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'active';
+    ALTER TABLE supplier_products ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
+    ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS tenant_id INTEGER REFERENCES tenants(tenant_id) ON DELETE CASCADE;
+    ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS po_number TEXT;
+    ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'Draft';
+    ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS expected_date DATE;
+    ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS sent_at TIMESTAMP;
+    ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS received_at TIMESTAMP;
+    ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS notes TEXT;
+    ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS total_amount NUMERIC(10,2) DEFAULT 0;
+    ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
+    ALTER TABLE purchase_order_items ADD COLUMN IF NOT EXISTS tenant_id INTEGER REFERENCES tenants(tenant_id) ON DELETE CASCADE;
+    ALTER TABLE purchase_order_items ADD COLUMN IF NOT EXISTS supplier_product_id INTEGER REFERENCES supplier_products(supplier_product_id) ON DELETE SET NULL;
+    ALTER TABLE purchase_order_items ADD COLUMN IF NOT EXISTS received_quantity INTEGER DEFAULT 0;
+    ALTER TABLE purchase_order_items ADD COLUMN IF NOT EXISTS notes TEXT;
+    ALTER TABLE price_history ADD COLUMN IF NOT EXISTS tenant_id INTEGER REFERENCES tenants(tenant_id) ON DELETE CASCADE;
+    ALTER TABLE price_history ADD COLUMN IF NOT EXISTS previous_price NUMERIC(10,2);
+    ALTER TABLE price_history ADD COLUMN IF NOT EXISTS source TEXT DEFAULT 'manual';
+    ALTER TABLE price_history ADD COLUMN IF NOT EXISTS notes TEXT;
 
     CREATE INDEX IF NOT EXISTS sessions_token_hash_idx ON sessions(token_hash);
     CREATE INDEX IF NOT EXISTS sessions_user_id_idx ON sessions(user_id);
     CREATE INDEX IF NOT EXISTS user_tenant_access_tenant_id_idx ON user_tenant_access(tenant_id);
+    CREATE INDEX IF NOT EXISTS facilities_tenant_id_idx ON facilities(tenant_id);
     CREATE INDEX IF NOT EXISTS machines_tenant_id_idx ON machines(tenant_id);
+    CREATE INDEX IF NOT EXISTS machines_facility_id_idx ON machines(facility_id);
     CREATE INDEX IF NOT EXISTS inventory_tenant_id_idx ON inventory(tenant_id);
+    CREATE INDEX IF NOT EXISTS inventory_reorder_number_idx ON inventory(tenant_id, reorder_number);
     CREATE INDEX IF NOT EXISTS filters_tenant_id_idx ON filters(tenant_id);
+    CREATE INDEX IF NOT EXISTS filters_machine_id_idx ON filters(machine_id);
     CREATE INDEX IF NOT EXISTS maintenance_tenant_id_idx ON maintenance(tenant_id);
+    CREATE INDEX IF NOT EXISTS maintenance_logs_tenant_id_idx ON maintenance_logs(tenant_id);
+    CREATE INDEX IF NOT EXISTS maintenance_logs_machine_id_idx ON maintenance_logs(machine_id);
+    CREATE INDEX IF NOT EXISTS technicians_tenant_id_idx ON technicians(tenant_id);
+    CREATE INDEX IF NOT EXISTS inspections_tenant_id_idx ON inspections(tenant_id);
+    CREATE INDEX IF NOT EXISTS inspections_machine_id_idx ON inspections(machine_id);
+    CREATE INDEX IF NOT EXISTS inventory_usage_tenant_id_idx ON inventory_usage(tenant_id);
+    CREATE INDEX IF NOT EXISTS import_batches_tenant_id_idx ON import_batches(tenant_id);
+    CREATE INDEX IF NOT EXISTS suppliers_tenant_id_idx ON suppliers(tenant_id);
+    CREATE INDEX IF NOT EXISTS suppliers_status_idx ON suppliers(tenant_id, status);
+    CREATE INDEX IF NOT EXISTS supplier_products_tenant_id_idx ON supplier_products(tenant_id);
+    CREATE INDEX IF NOT EXISTS supplier_products_inventory_id_idx ON supplier_products(tenant_id, inventory_id);
+    CREATE INDEX IF NOT EXISTS supplier_products_supplier_id_idx ON supplier_products(tenant_id, supplier_id);
+    CREATE INDEX IF NOT EXISTS purchase_orders_tenant_id_idx ON purchase_orders(tenant_id);
+    CREATE INDEX IF NOT EXISTS purchase_orders_supplier_id_idx ON purchase_orders(tenant_id, supplier_id);
+    CREATE INDEX IF NOT EXISTS purchase_order_items_order_id_idx ON purchase_order_items(purchase_order_id);
+    CREATE INDEX IF NOT EXISTS price_history_tenant_id_idx ON price_history(tenant_id);
+    CREATE INDEX IF NOT EXISTS price_history_supplier_product_id_idx ON price_history(supplier_product_id);
   `)
 
   const tenantName = process.env.FILTRACORE_TENANT_NAME || 'FiltraCore Customer'
@@ -456,6 +869,67 @@ async function ensureSchema() {
     `
   )
   await pool.query('UPDATE maintenance SET tenant_id = $1 WHERE tenant_id IS NULL', [defaultTenantId])
+
+  await pool.query(`
+    UPDATE machines
+    SET
+      category = COALESCE(category, type),
+      exact_location = COALESCE(exact_location, location),
+      qr_payload = COALESCE(qr_payload, 'filtracore://machine/' || machine_id::text),
+      health_status = COALESCE(health_status, 'Unknown')
+    WHERE tenant_id IS NOT NULL;
+
+    UPDATE inventory
+    SET filter_type = COALESCE(filter_type, category)
+    WHERE tenant_id IS NOT NULL;
+
+    UPDATE filters
+    SET filter_quantity = COALESCE(filter_quantity, 1)
+    WHERE tenant_id IS NOT NULL;
+
+    INSERT INTO maintenance_logs
+    (
+      legacy_maintenance_id,
+      tenant_id,
+      machine_id,
+      filter_id,
+      technician_id,
+      technician_name,
+      maintenance_type,
+      priority,
+      notes,
+      current_psi,
+      corrected_psi,
+      replacement_product_id,
+      replaced_from,
+      replaced_with,
+      performed_at,
+      next_due_date
+    )
+    SELECT
+      maintenance.maintenance_id,
+      maintenance.tenant_id,
+      maintenance.machine_id,
+      maintenance.filter_id,
+      maintenance.technician_id,
+      maintenance.technician_name,
+      maintenance.maintenance_type,
+      maintenance.priority,
+      maintenance.notes,
+      maintenance.current_psi,
+      maintenance.corrected_psi,
+      maintenance.replacement_product_id,
+      maintenance.replaced_from,
+      maintenance.replaced_with,
+      maintenance.performed_at,
+      maintenance.next_due_date
+    FROM maintenance
+    WHERE NOT EXISTS (
+      SELECT 1
+      FROM maintenance_logs
+      WHERE maintenance_logs.legacy_maintenance_id = maintenance.maintenance_id
+    );
+  `)
 
   await pool.query(`
     ALTER TABLE machines ALTER COLUMN tenant_id SET NOT NULL;
@@ -559,6 +1033,391 @@ async function ensureUniqueTenantSlug(db, businessName) {
 
     slug = `${baseSlug}-${suffix}`
     suffix += 1
+  }
+}
+
+const waterfilterSetupSourceName = 'Waterfilters setup sheet'
+const waterfilterSetupRecords = [
+  { venue: "PT'S", machine: 'Ice Machine', reorderNumber: '300-05830', filterType: 'PENTAIR EVERPURE', quantity: 3, category: 'Ice Machine' },
+  { venue: "PT'S", machine: 'STEAMER', reorderNumber: '300-05829', filterType: 'PENTAIR EVERPURE', quantity: 1, category: 'Steamer' },
+  { venue: "PT'S", machine: 'STEAMER', reorderNumber: 'AR-1000-P', filterType: 'ARTIC PURE+', quantity: 1, category: 'Steamer' },
+  { venue: "PT'S", machine: 'BACK SIDE STATION', reorderNumber: '300-05835', filterType: 'OPTIC PURE', quantity: 2, category: 'Water Station' },
+  { venue: "PT'S", machine: 'FRONT SIDE STATION', reorderNumber: '300-05835', filterType: 'PENTAIR EVERPURE', quantity: 1, category: 'Water Station' },
+  { venue: 'SWIM AND SOCIAL', machine: 'Ice Machine', reorderNumber: 'EV9612-22', filterType: 'PENTAIR EVERPURE', quantity: 2, category: 'Ice Machine' },
+  { venue: 'SWIM AND SOCIAL', machine: 'Soda Machine', reorderNumber: 'AR-4000-P', filterType: 'ARTIC PURE+', quantity: 1, category: 'Soda Machine' },
+  { venue: 'CHI', machine: 'Ice Machine', reorderNumber: 'EV9612-32', filterType: 'PENTAIR EVERPURE', quantity: 3, category: 'Ice Machine' },
+  { venue: 'CHI', machine: 'Soda Machine', reorderNumber: 'AR-4000-P', filterType: 'ARTIC PURE+', quantity: 1, category: 'Soda Machine' },
+  { venue: 'CHI', machine: 'Tea Machine', reorderNumber: 'EV9613-21', filterType: 'PENTAIR EVERPURE', quantity: 2, category: 'Tea Machine' },
+  { venue: 'CHI', machine: 'STEAMER', reorderNumber: 'EV9618-21', filterType: 'PENTAIR EVERPURE', quantity: 4, category: 'Steamer' },
+  { venue: 'CAFE', machine: 'Ice Machine', reorderNumber: 'EV9612-32', filterType: 'PENTAIR EVERPURE', quantity: 2, category: 'Ice Machine' },
+  { venue: 'CAFE', machine: 'STEAMER', reorderNumber: 'EV9618-21', filterType: 'PENTAIR EVERPURE', quantity: 2, category: 'Steamer' },
+  { venue: 'EDR', machine: 'STEAMER', reorderNumber: '2915145', filterType: 'PURE WATER', quantity: 1, category: 'Steamer' },
+  { venue: 'EDR', machine: 'Ice Machine', reorderNumber: 'EV9781-12', filterType: 'PENTAIR EVERPURE', quantity: 4, category: 'Ice Machine' },
+  { venue: 'STARBUCKS', machine: 'Ice Machine', reorderNumber: 'B-361123', filterType: 'Ice-O-Matic', quantity: 2, category: 'Ice Machine' },
+  { venue: 'NAGA', machine: 'Ice Machine', reorderNumber: 'EV9612-22', filterType: 'PENTAIR EVERPURE', quantity: 1, category: 'Ice Machine' },
+  { venue: "McCall's Bar", machine: 'Coffee Machine', reorderNumber: 'HF25-S', filterType: '3M High Flow', quantity: 2, category: 'Coffee Machine', exactLocation: 'Side station' },
+  { venue: "McCall's Bar", machine: 'Ice Machine', reorderNumber: 'EV9781-12', filterType: 'PENTAIR EVERPURE', quantity: 2, category: 'Ice Machine' },
+  { venue: "McCall's Bar", machine: 'Ice Machine', reorderNumber: '4622-10', filterType: 'EVERPURE CU-S', quantity: 2, category: 'Ice Machine' },
+  { venue: "McCall's Buffet", machine: 'Ice Machine', reorderNumber: 'EFS8002', filterType: 'EVERPURE CU-S', quantity: 4, category: 'Ice Machine' },
+  { venue: "McCall's Buffet", machine: 'Ice Machine', reorderNumber: 'EV9612-22', filterType: 'PENTAIR EVERPURE', quantity: 1, category: 'Ice Machine' },
+  { venue: 'Tower 105', machine: 'Ice Machine', reorderNumber: 'EV9781-12', filterType: 'PENTAIR EVERPURE', quantity: 3, category: 'Ice Machine' },
+  { venue: 'Tower 104', machine: 'Ice Machine', reorderNumber: '4622-10', filterType: 'EVERPURE CU-S', quantity: 2, category: 'Ice Machine' },
+  { venue: 'Broadway Bar', machine: 'Ice Machine', reorderNumber: 'EV9781-12', filterType: 'PENTAIR EVERPURE', quantity: 4, category: 'Ice Machine' }
+]
+
+async function removeStarterSampleData(db, tenantId) {
+  await db.query(
+    `
+    DELETE FROM machines
+    WHERE tenant_id = $1
+      AND asset_id = ANY($2::text[])
+    `,
+    [
+      tenantId,
+      [
+        'FC-ICE-001',
+        'FC-COF-002',
+        'FC-SODA-003',
+        'STRAT-BAK-OVEN-01',
+        'STRAT-BAK-OVEN-02',
+        'STRAT-BEV-SODA-01',
+        'STRAT-BEV-ICE-01',
+        'STRAT-BEV-TEA-01',
+        'STRAT-BEV-SODA-02'
+      ]
+    ]
+  )
+
+  await db.query(
+    `
+    DELETE FROM inventory
+    WHERE tenant_id = $1
+      AND name = ANY($2::text[])
+    `,
+    [
+      tenantId,
+      [
+        'Carbon Block 10"',
+        'Scale Control Cartridge',
+        'Sediment Pre-filter',
+        'High Flow Beverage Cartridge',
+        '3M ICE120-S Ice Machine Cartridge',
+        'Pentair Everpure 4FC-S Fountain Filter',
+        'Bunn EQHP-10L Coffee Water Filter',
+        'Pentair Everpure EV979902 Prep Water Filter'
+      ]
+    ]
+  )
+}
+
+function groupWaterfilterRecordsByVenue() {
+  return waterfilterSetupRecords.reduce((groups, record) => {
+    const venue = record.venue
+    const current = groups.get(venue) || []
+    current.push(record)
+    groups.set(venue, current)
+    return groups
+  }, new Map())
+}
+
+async function clearTenantOperationalData(db, tenantId) {
+  await db.query('DELETE FROM price_history WHERE tenant_id = $1', [tenantId])
+  await db.query('DELETE FROM purchase_order_items WHERE tenant_id = $1', [tenantId])
+  await db.query('DELETE FROM purchase_orders WHERE tenant_id = $1', [tenantId])
+  await db.query('DELETE FROM supplier_products WHERE tenant_id = $1', [tenantId])
+  await db.query('DELETE FROM suppliers WHERE tenant_id = $1', [tenantId])
+  await db.query('DELETE FROM import_batches WHERE tenant_id = $1', [tenantId])
+  await db.query('DELETE FROM inspections WHERE tenant_id = $1', [tenantId])
+  await db.query('DELETE FROM maintenance_logs WHERE tenant_id = $1', [tenantId])
+  await db.query('DELETE FROM maintenance WHERE tenant_id = $1', [tenantId])
+  await db.query('DELETE FROM inventory_usage WHERE tenant_id = $1', [tenantId])
+  await db.query('DELETE FROM filters WHERE tenant_id = $1', [tenantId])
+  await db.query('DELETE FROM machines WHERE tenant_id = $1', [tenantId])
+  await db.query('DELETE FROM inventory WHERE tenant_id = $1', [tenantId])
+  await db.query('DELETE FROM facilities WHERE tenant_id = $1', [tenantId])
+  await db.query('DELETE FROM technicians WHERE tenant_id = $1', [tenantId])
+}
+
+const supplierSeedProfiles = [
+  {
+    name: 'Sysco',
+    contactName: 'Procurement Desk',
+    email: 'orders@sysco.example',
+    phone: '(702) 555-0140',
+    website: 'https://www.sysco.com',
+    category: 'Foodservice Distributor',
+    notes: 'Primary broadline distributor for restaurant and facility supplies.',
+    multiplier: 1,
+    previousMultiplier: 0.96,
+    skuSuffix: 'SYS'
+  },
+  {
+    name: 'Restaurant Depot',
+    contactName: 'Will Call',
+    email: 'commercial@restaurantdepot.example',
+    phone: '(702) 555-0188',
+    website: 'https://www.restaurantdepot.com',
+    category: 'Cash and Carry',
+    notes: 'Useful benchmark supplier for lower unit pricing and urgent pickup.',
+    multiplier: 0.93,
+    previousMultiplier: 0.95,
+    skuSuffix: 'RD'
+  },
+  {
+    name: 'Amazon Business',
+    contactName: 'Business Support',
+    email: 'business-support@amazon.example',
+    phone: '(888) 555-0199',
+    website: 'https://business.amazon.com',
+    category: 'Marketplace',
+    notes: 'Fallback marketplace supplier for availability checks and spot buys.',
+    multiplier: 1.14,
+    previousMultiplier: 1.09,
+    skuSuffix: 'AMZ'
+  }
+]
+
+function roundCurrency(value) {
+  return Math.round((Number(value) || 0) * 100) / 100
+}
+
+function estimateSupplierBasePrice(item) {
+  const unitCost = toNumber(item.unit_cost)
+  if (unitCost > 0) return unitCost
+
+  const text = [item.name, item.category, item.filter_type, item.reorder_number].join(' ').toLowerCase()
+
+  if (text.includes('3m') || text.includes('coffee')) return 34
+  if (text.includes('steamer') || text.includes('steam')) return 47
+  if (text.includes('soda') || text.includes('ar-4000')) return 39
+  if (text.includes('cu-s') || text.includes('4622')) return 31
+  if (text.includes('ice-o-matic') || text.includes('b-361123')) return 52
+  if (text.includes('everpure') || text.includes('pentair')) return 43
+
+  return 36
+}
+
+async function ensureSupplierSeedData(db, tenantId) {
+  const existing = await db.query('SELECT supplier_id FROM suppliers WHERE tenant_id = $1 LIMIT 1', [tenantId])
+  if (existing.rowCount > 0) return
+
+  const inventoryResult = await db.query(
+    'SELECT * FROM inventory WHERE tenant_id = $1 ORDER BY inventory_id ASC',
+    [tenantId]
+  )
+
+  if (inventoryResult.rowCount === 0) return
+
+  const supplierIds = new Map()
+
+  for (const supplier of supplierSeedProfiles) {
+    const created = await db.query(
+      `
+      INSERT INTO suppliers
+      (
+        tenant_id,
+        name,
+        contact_name,
+        email,
+        phone,
+        website,
+        category,
+        notes,
+        status
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'active')
+      RETURNING supplier_id
+      `,
+      [
+        tenantId,
+        supplier.name,
+        supplier.contactName,
+        supplier.email,
+        supplier.phone,
+        supplier.website,
+        supplier.category,
+        supplier.notes
+      ]
+    )
+
+    supplierIds.set(supplier.name, Number(created.rows[0].supplier_id))
+  }
+
+  for (const item of inventoryResult.rows) {
+    const basePrice = estimateSupplierBasePrice(item)
+    const reorderNumber = item.reorder_number || `INV-${item.inventory_id}`
+
+    for (const supplier of supplierSeedProfiles) {
+      const currentPrice = roundCurrency(basePrice * supplier.multiplier)
+      const previousPrice = roundCurrency(basePrice * supplier.previousMultiplier)
+      const supplierId = supplierIds.get(supplier.name)
+      const productResult = await db.query(
+        `
+        INSERT INTO supplier_products
+        (
+          tenant_id,
+          supplier_id,
+          inventory_id,
+          supplier_sku,
+          product_name,
+          current_price,
+          last_price,
+          last_updated_at,
+          notes,
+          status
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, CURRENT_TIMESTAMP, $8, 'active')
+        RETURNING supplier_product_id
+        `,
+        [
+          tenantId,
+          supplierId,
+          item.inventory_id,
+          `${reorderNumber}-${supplier.skuSuffix}`,
+          item.name,
+          currentPrice,
+          previousPrice,
+          `Seeded supplier price for ${item.name}`
+        ]
+      )
+
+      await db.query(
+        `
+        INSERT INTO price_history
+        (
+          tenant_id,
+          supplier_product_id,
+          supplier_id,
+          inventory_id,
+          price,
+          previous_price,
+          source,
+          notes
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, 'seed', $7)
+        `,
+        [
+          tenantId,
+          productResult.rows[0].supplier_product_id,
+          supplierId,
+          item.inventory_id,
+          currentPrice,
+          previousPrice,
+          `Initial procurement baseline for ${supplier.name}`
+        ]
+      )
+    }
+  }
+}
+
+async function findLinkedTenantByName(db, userId, name) {
+  const result = await db.query(
+    `
+    SELECT tenants.tenant_id
+    FROM user_tenant_access
+    INNER JOIN tenants ON tenants.tenant_id = user_tenant_access.tenant_id
+    WHERE user_tenant_access.user_id = $1
+      AND LOWER(tenants.name) = LOWER($2)
+    LIMIT 1
+    `,
+    [userId, name]
+  )
+
+  return result.rowCount > 0 ? Number(result.rows[0].tenant_id) : null
+}
+
+async function createLinkedTenant(db, userId, name, identityLabel = 'Strat') {
+  const slug = await ensureUniqueTenantSlug(db, name)
+  const tenantResult = await db.query(
+    `
+    INSERT INTO tenants (name, slug, identity_label)
+    VALUES ($1, $2, $3)
+    RETURNING tenant_id
+    `,
+    [name, slug, identityLabel]
+  )
+  const tenantId = Number(tenantResult.rows[0].tenant_id)
+
+  await db.query(
+    `
+    INSERT INTO user_tenant_access (user_id, tenant_id, role)
+    VALUES ($1, $2, 'admin')
+    ON CONFLICT (user_id, tenant_id) DO UPDATE SET role = EXCLUDED.role
+    `,
+    [userId, tenantId]
+  )
+
+  return tenantId
+}
+
+async function removeLegacyStratAggregateWorkspaces(db, userId) {
+  const legacyResult = await db.query(
+    `
+    SELECT tenants.tenant_id
+    FROM user_tenant_access
+    INNER JOIN tenants ON tenants.tenant_id = user_tenant_access.tenant_id
+    WHERE user_tenant_access.user_id = $1
+      AND LOWER(tenants.name) = ANY($2::text[])
+    `,
+    [userId, ['mccalls']]
+  )
+
+  for (const row of legacyResult.rows) {
+    await db.query('DELETE FROM tenants WHERE tenant_id = $1', [Number(row.tenant_id)])
+  }
+}
+
+async function ensureWaterfilterRestaurantWorkspaces(db, userId, homeTenantId) {
+  if (!userId || !homeTenantId) return
+
+  const venueGroups = groupWaterfilterRecordsByVenue()
+  await removeLegacyStratAggregateWorkspaces(db, userId)
+
+  for (const [venue, records] of venueGroups.entries()) {
+    const isHomeVenue = venue === "PT'S"
+    let tenantId = isHomeVenue ? Number(homeTenantId) : await findLinkedTenantByName(db, userId, venue)
+
+    if (!tenantId) {
+      tenantId = await createLinkedTenant(db, userId, venue, 'Strat')
+    } else {
+      await db.query(
+        'UPDATE tenants SET name = $1, identity_label = $2 WHERE tenant_id = $3',
+        [venue, 'Strat', tenantId]
+      )
+      await db.query(
+        `
+        INSERT INTO user_tenant_access (user_id, tenant_id, role)
+        VALUES ($1, $2, 'admin')
+        ON CONFLICT (user_id, tenant_id) DO UPDATE SET role = EXCLUDED.role
+        `,
+        [userId, tenantId]
+      )
+    }
+
+    const sourceName = `${waterfilterSetupSourceName}: ${venue}`
+    const existingBatch = await db.query(
+      'SELECT import_batch_id FROM import_batches WHERE tenant_id = $1 AND source_name = $2 LIMIT 1',
+      [tenantId, sourceName]
+    )
+
+    if (existingBatch.rowCount > 0) {
+      await ensureSupplierSeedData(db, tenantId)
+      continue
+    }
+
+    await clearTenantOperationalData(db, tenantId)
+    await applyImportRecords(
+      { tenantId },
+      records,
+      {
+        sourceName,
+        sourceType: 'seed/waterfilters-photo',
+        aiUsed: false,
+        warnings: []
+      },
+      { bypassMachineLimit: true }
+    )
+    await ensureSupplierSeedData(db, tenantId)
   }
 }
 
@@ -969,10 +1828,14 @@ async function upsertFiltraCoreAccount(accountInput, { resetPassword = false, ca
 async function seedCanonicalClientUsers() {
   const shouldReset = process.env.FILTRACORE_RESET_CLIENT_PASSWORDS === 'true'
   for (const account of canonicalClientAccounts()) {
-    await upsertFiltraCoreAccount(account, {
+    const session = await upsertFiltraCoreAccount(account, {
       resetPassword: shouldReset,
       candidates: account.candidates
     })
+
+    if (normalizeLoginIdentifier(account.email) === stratAccountEmail && session?.user?.id && session?.user?.tenantId) {
+      await ensureWaterfilterRestaurantWorkspaces(pool, Number(session.user.id), Number(session.user.tenantId))
+    }
   }
 }
 
@@ -1008,7 +1871,7 @@ async function syncAccountToBeoflow(accountInput) {
 }
 
 async function seedDemoUser() {
-  await upsertFiltraCoreAccount({
+  const session = await upsertFiltraCoreAccount({
     businessName: 'Northstar Hospitality',
     fullName: 'App Review Demo',
     email: demoEmail,
@@ -1019,6 +1882,10 @@ async function seedDemoUser() {
     resetPassword: true,
     candidates: ['demo@filtracore.io', 'demo@lineops.io']
   })
+
+  if (session?.user?.tenantId) {
+    await ensureWaterfilterSetupData(pool, Number(session.user.tenantId))
+  }
 }
 
 async function seedBrainUser() {
@@ -1077,6 +1944,10 @@ async function getState(auth, db = pool) {
 
   try {
     const machineAccess = await getMachineAccess(client, tenantId)
+    const facilitiesResult = await client.query(
+      'SELECT * FROM facilities WHERE tenant_id = $1 ORDER BY name ASC, facility_id DESC',
+      [tenantId]
+    )
     const machinesResult = await client.query(
       'SELECT * FROM machines WHERE tenant_id = $1 ORDER BY machine_id DESC',
       [tenantId]
@@ -1090,7 +1961,10 @@ async function getState(auth, db = pool) {
         filters.*,
         inventory.name AS product_name,
         inventory.category AS product_category,
-        inventory.unit_cost
+        inventory.unit_cost,
+        inventory.reorder_number AS product_reorder_number,
+        inventory.filter_type AS product_filter_type,
+        inventory.vendor_name AS product_vendor_name
       FROM filters
       LEFT JOIN inventory
         ON inventory.inventory_id = filters.inventory_id
@@ -1102,8 +1976,104 @@ async function getState(auth, db = pool) {
       'SELECT * FROM maintenance WHERE tenant_id = $1 ORDER BY performed_at DESC, maintenance_id DESC',
       [tenantId]
     )
+    const techniciansResult = await client.query(
+      'SELECT * FROM technicians WHERE tenant_id = $1 ORDER BY active DESC, name ASC',
+      [tenantId]
+    )
+    const inspectionsResult = await client.query(
+      'SELECT * FROM inspections WHERE tenant_id = $1 ORDER BY inspected_at DESC, inspection_id DESC LIMIT 200',
+      [tenantId]
+    )
+    const inventoryUsageResult = await client.query(
+      `
+      SELECT
+        inventory_id,
+        SUM(quantity)::int AS total_used,
+        COUNT(*)::int AS events,
+        MAX(used_at) AS last_used_at
+      FROM inventory_usage
+      WHERE tenant_id = $1
+      GROUP BY inventory_id
+      `,
+      [tenantId]
+    )
+    const suppliersResult = await client.query(
+      `
+      SELECT *
+      FROM suppliers
+      WHERE tenant_id = $1
+      ORDER BY status ASC, name ASC, supplier_id DESC
+      `,
+      [tenantId]
+    )
+    const supplierProductsResult = await client.query(
+      `
+      SELECT
+        supplier_products.*,
+        suppliers.name AS supplier_name,
+        inventory.name AS inventory_name,
+        inventory.category AS inventory_category,
+        inventory.stock,
+        inventory.reorder_level
+      FROM supplier_products
+      INNER JOIN suppliers
+        ON suppliers.supplier_id = supplier_products.supplier_id
+       AND suppliers.tenant_id = supplier_products.tenant_id
+      INNER JOIN inventory
+        ON inventory.inventory_id = supplier_products.inventory_id
+       AND inventory.tenant_id = supplier_products.tenant_id
+      WHERE supplier_products.tenant_id = $1
+      ORDER BY inventory.name ASC, supplier_products.current_price ASC, suppliers.name ASC
+      `,
+      [tenantId]
+    )
+    const priceHistoryResult = await client.query(
+      `
+      SELECT *
+      FROM price_history
+      WHERE tenant_id = $1
+      ORDER BY changed_at DESC, price_history_id DESC
+      LIMIT 300
+      `,
+      [tenantId]
+    )
+    const purchaseOrdersResult = await client.query(
+      `
+      SELECT
+        purchase_orders.*,
+        suppliers.name AS supplier_name
+      FROM purchase_orders
+      LEFT JOIN suppliers
+        ON suppliers.supplier_id = purchase_orders.supplier_id
+       AND suppliers.tenant_id = purchase_orders.tenant_id
+      WHERE purchase_orders.tenant_id = $1
+      ORDER BY purchase_orders.created_at DESC, purchase_orders.purchase_order_id DESC
+      `,
+      [tenantId]
+    )
+    const purchaseOrderItemsResult = await client.query(
+      `
+      SELECT
+        purchase_order_items.*,
+        inventory.name AS inventory_name
+      FROM purchase_order_items
+      LEFT JOIN inventory
+        ON inventory.inventory_id = purchase_order_items.inventory_id
+       AND inventory.tenant_id = purchase_order_items.tenant_id
+      WHERE purchase_order_items.tenant_id = $1
+      ORDER BY purchase_order_items.purchase_order_id DESC, purchase_order_items.purchase_order_item_id ASC
+      `,
+      [tenantId]
+    )
 
     const maintenanceRecords = maintenanceResult.rows.map(mapMaintenance)
+    const purchaseOrders = purchaseOrdersResult.rows.map(mapPurchaseOrder)
+    const purchaseOrdersById = new Map(purchaseOrders.map(order => [order.id, order]))
+
+    purchaseOrderItemsResult.rows.map(mapPurchaseOrderItem).forEach(item => {
+      const order = purchaseOrdersById.get(item.purchaseOrderId)
+      if (order) order.items.push(item)
+    })
     const psiHistoryByFilter = new Map()
 
     maintenanceRecords
@@ -1138,10 +2108,23 @@ async function getState(auth, db = pool) {
     })
 
     return {
+      facilities: facilitiesResult.rows.map(mapFacility),
       machines: machinesResult.rows.map(mapMachine),
       inventory: inventoryResult.rows.map(mapInventory),
       filters,
       maintenanceRecords,
+      technicians: techniciansResult.rows.map(mapTechnician),
+      inspections: inspectionsResult.rows.map(mapInspection),
+      inventoryUsage: inventoryUsageResult.rows.map(row => ({
+        inventoryId: row.inventory_id === null || row.inventory_id === undefined ? null : Number(row.inventory_id),
+        totalUsed: toNumber(row.total_used),
+        events: toNumber(row.events),
+        lastUsedAt: row.last_used_at
+      })),
+      suppliers: suppliersResult.rows.map(mapSupplier),
+      supplierProducts: supplierProductsResult.rows.map(mapSupplierProduct),
+      priceHistory: priceHistoryResult.rows.map(mapPriceHistory),
+      purchaseOrders,
       machineAccess
     }
   } finally {
@@ -1197,6 +2180,90 @@ async function sendState(req, res, status = 200) {
   res.status(status).json(state)
 }
 
+async function findOrCreateFacility(db, tenantId, name, details = {}) {
+  const cleanName = String(name || '').trim()
+  if (!cleanName) return null
+
+  const existing = await db.query(
+    `
+    SELECT facility_id
+    FROM facilities
+    WHERE tenant_id = $1
+      AND LOWER(name) = LOWER($2)
+    LIMIT 1
+    `,
+    [tenantId, cleanName]
+  )
+
+  if (existing.rowCount > 0) {
+    await db.query(
+      `
+      UPDATE facilities
+      SET
+        venue_type = COALESCE(NULLIF($3, ''), venue_type),
+        building = COALESCE(NULLIF($4, ''), building),
+        address = COALESCE(NULLIF($5, ''), address)
+      WHERE facility_id = $2
+        AND tenant_id = $1
+      `,
+      [
+        tenantId,
+        existing.rows[0].facility_id,
+        String(details.venueType || details.venue_type || '').trim(),
+        String(details.building || '').trim(),
+        String(details.address || '').trim()
+      ]
+    )
+    return Number(existing.rows[0].facility_id)
+  }
+
+  const created = await db.query(
+    `
+    INSERT INTO facilities (tenant_id, name, venue_type, building, address)
+    VALUES ($1, $2, $3, $4, $5)
+    RETURNING facility_id
+    `,
+    [
+      tenantId,
+      cleanName,
+      String(details.venueType || details.venue_type || '').trim() || null,
+      String(details.building || '').trim() || null,
+      String(details.address || '').trim() || null
+    ]
+  )
+
+  return Number(created.rows[0].facility_id)
+}
+
+async function findOrCreateTechnician(db, tenantId, name) {
+  const cleanName = String(name || '').trim()
+  if (!cleanName) return null
+
+  const existing = await db.query(
+    `
+    SELECT technician_id
+    FROM technicians
+    WHERE tenant_id = $1
+      AND LOWER(name) = LOWER($2)
+    LIMIT 1
+    `,
+    [tenantId, cleanName]
+  )
+
+  if (existing.rowCount > 0) return Number(existing.rows[0].technician_id)
+
+  const created = await db.query(
+    `
+    INSERT INTO technicians (tenant_id, name)
+    VALUES ($1, $2)
+    RETURNING technician_id
+    `,
+    [tenantId, cleanName]
+  )
+
+  return Number(created.rows[0].technician_id)
+}
+
 function handleError(res, error, fallbackMessage = 'Request failed') {
   const statusCode = error.statusCode || 500
 
@@ -1223,6 +2290,824 @@ function unauthorized(message = 'Sign in is required') {
   error.statusCode = 401
   error.publicMessage = message
   return error
+}
+
+function parseDataUrl(dataUrl) {
+  const value = String(dataUrl || '').trim()
+  const match = value.match(/^data:([^;,]+)?(;base64)?,(.*)$/i)
+
+  if (!match) {
+    return {
+      mimeType: '',
+      buffer: Buffer.from(value, 'utf8'),
+      dataUrl: value
+    }
+  }
+
+  const mimeType = match[1] || ''
+  const isBase64 = Boolean(match[2])
+  const payload = match[3] || ''
+  const buffer = isBase64
+    ? Buffer.from(payload, 'base64')
+    : Buffer.from(decodeURIComponent(payload), 'utf8')
+
+  return { mimeType, buffer, dataUrl: value }
+}
+
+function cleanImportText(value) {
+  return String(value || '')
+    .replace(/\u00a0/g, ' ')
+    .replace(/[“”]/g, '"')
+    .replace(/[‘’]/g, "'")
+    .trim()
+}
+
+function importCell(row, aliases) {
+  if (!row || typeof row !== 'object') return ''
+
+  const normalized = new Map(
+    Object.entries(row).map(([key, value]) => [
+      String(key || '').trim().toLowerCase().replace(/[^a-z0-9]/g, ''),
+      value
+    ])
+  )
+
+  for (const alias of aliases) {
+    const key = String(alias).toLowerCase().replace(/[^a-z0-9]/g, '')
+    if (normalized.has(key)) return normalized.get(key)
+  }
+
+  return ''
+}
+
+function normalizeImportRecord(record) {
+  const source = record && typeof record === 'object' ? record : {}
+  const venue = cleanImportText(source.venue ?? source.facility ?? source.location ?? source.business ?? '')
+  const machine = cleanImportText(source.machine ?? source.machineName ?? source.asset ?? source.equipment ?? '')
+  const reorderNumber = cleanImportText(
+    source.reorderNumber ?? source.reorder_number ?? source.reorder ?? source.reOrder ?? source.reorderNo ?? source['ReOrder#'] ?? ''
+  )
+  const filterType = cleanImportText(source.filterType ?? source.filter_type ?? source.filter ?? source.product ?? source.name ?? '')
+  const quantity = Math.max(1, toNumber(source.quantity ?? source.filterQuantity ?? source.filter_amount ?? source.amount, 1))
+
+  if (!venue || !machine || !reorderNumber || !filterType) return null
+
+  return {
+    venue: venue.slice(0, 160),
+    machine: machine.slice(0, 160),
+    reorderNumber: reorderNumber.slice(0, 80),
+    filterType: filterType.slice(0, 160),
+    quantity,
+    category: cleanImportText(source.category ?? source.equipmentCategory ?? source.equipment_category ?? machine).slice(0, 120),
+    brand: cleanImportText(source.brand || '').slice(0, 120),
+    model: cleanImportText(source.model || '').slice(0, 120),
+    serialNumber: cleanImportText(source.serialNumber ?? source.serial_number ?? '').slice(0, 120),
+    building: cleanImportText(source.building || '').slice(0, 120),
+    floor: cleanImportText(source.floor || '').slice(0, 60),
+    zone: cleanImportText(source.zone || '').slice(0, 120),
+    exactLocation: cleanImportText(source.exactLocation ?? source.exact_location ?? venue).slice(0, 220),
+    vendorName: cleanImportText(source.vendorName ?? source.vendor_name ?? source.vendor ?? '').slice(0, 160),
+    confidence: Math.max(0, Math.min(1, Number(source.confidence) || 0.72))
+  }
+}
+
+function rowsFromWorksheet(workbook) {
+  const rows = []
+
+  for (const sheetName of workbook.SheetNames) {
+    const sheet = workbook.Sheets[sheetName]
+    const jsonRows = XLSX.utils.sheet_to_json(sheet, { defval: '', raw: false })
+
+    jsonRows.forEach(row => {
+      const normalized = normalizeImportRecord({
+        venue: importCell(row, ['venue', 'facility', 'location', 'site']),
+        machine: importCell(row, ['machine', 'equipment', 'asset', 'machine name']),
+        reorderNumber: importCell(row, ['reorder', 'reorder#', 're order#', 'reorder number', 'reorder no', 'part number', 'sku']),
+        filterType: importCell(row, ['filter type', 'filter', 'product', 'cartridge', 'name']),
+        quantity: importCell(row, ['filter amount', 'amount', 'qty', 'quantity', 'filter quantity']),
+        category: importCell(row, ['category', 'equipment category', 'type']),
+        brand: importCell(row, ['brand']),
+        model: importCell(row, ['model']),
+        serialNumber: importCell(row, ['serial', 'serial number']),
+        building: importCell(row, ['building']),
+        floor: importCell(row, ['floor']),
+        zone: importCell(row, ['zone']),
+        exactLocation: importCell(row, ['exact location', 'location detail']),
+        vendorName: importCell(row, ['vendor', 'vendor name', 'supplier'])
+      })
+
+      if (normalized) rows.push(normalized)
+    })
+  }
+
+  return rows
+}
+
+function parseDelimitedImportText(text) {
+  const workbook = XLSX.read(text, { type: 'string', raw: false })
+  return rowsFromWorksheet(workbook)
+}
+
+function parseFreeformImportLine(line) {
+  const cleanLine = cleanImportText(line)
+  if (!cleanLine || /venue\s+machine\s+re\s*order|waterfilters/i.test(cleanLine)) return null
+
+  const quantityMatch = cleanLine.match(/\s+(\d+)\s*$/)
+  if (!quantityMatch) return null
+
+  const quantity = Number(quantityMatch[1])
+  const withoutQuantity = cleanLine.slice(0, quantityMatch.index).trim()
+  const reorderPattern = /\b(?:[A-Z]{1,4}\d[A-Z0-9.-]*-\d+[A-Z0-9.-]*|[A-Z]{1,4}-\d+[A-Z0-9.-]*|[A-Z]{1,4}s?\d{3,}|[0-9]{3,}(?:-[0-9A-Z]+)?)\b/i
+  const reorderMatch = withoutQuantity.match(reorderPattern)
+
+  if (!reorderMatch) return null
+
+  const reorderNumber = reorderMatch[0]
+  const left = withoutQuantity.slice(0, reorderMatch.index).trim()
+  const filterType = withoutQuantity.slice(reorderMatch.index + reorderNumber.length).trim()
+  if (!left || !filterType) return null
+
+  const machinePatterns = [
+    'BACK SIDE STATION',
+    'FRONT SIDE STATION',
+    'Ice Machine',
+    'Soda Machine',
+    'Tea Machine',
+    'Coffee machine',
+    'Coffe machine',
+    'STEAMER',
+    'Steamer'
+  ]
+
+  let machine = ''
+  let venue = ''
+
+  for (const pattern of machinePatterns) {
+    const regex = new RegExp(`\\b${pattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i')
+    const match = left.match(regex)
+    if (match) {
+      venue = left.slice(0, match.index).trim()
+      machine = match[0].trim()
+      break
+    }
+  }
+
+  if (!venue || !machine) {
+    const parts = left.split(/\s{2,}|\t+/).map(part => part.trim()).filter(Boolean)
+    if (parts.length >= 2) {
+      venue = parts.slice(0, -1).join(' ')
+      machine = parts[parts.length - 1]
+    }
+  }
+
+  if (!venue || !machine) return null
+
+  return normalizeImportRecord({
+    venue,
+    machine,
+    reorderNumber,
+    filterType,
+    quantity,
+    category: machine,
+    confidence: 0.65
+  })
+}
+
+function parseImportRowsFromText(text) {
+  const cleanText = cleanImportText(text)
+  if (!cleanText) return []
+
+  const delimitedRows = parseDelimitedImportText(cleanText)
+  if (delimitedRows.length > 0) return delimitedRows
+
+  const rows = []
+  cleanText
+    .split(/\r?\n/)
+    .map(line => line.trim())
+    .filter(Boolean)
+    .forEach(line => {
+      const parsed = parseFreeformImportLine(line)
+      if (parsed) rows.push(parsed)
+    })
+
+  return rows
+}
+
+async function extractPdfText(buffer) {
+  const parser = new PDFParse({ data: buffer })
+
+  try {
+    const result = await parser.getText({ first: 10 })
+    return cleanImportText(result.text || '')
+  } finally {
+    await parser.destroy()
+  }
+}
+
+async function extractImportContent(body) {
+  const warnings = []
+  const sourceText = cleanImportText(body.text || body.sourceText || '')
+  const sourceName = cleanImportText(body.fileName || body.sourceName || 'Manual import')
+  const dataUrl = String(body.dataUrl || '').trim()
+  const declaredMimeType = cleanImportText(body.mimeType || '')
+  let extractedText = sourceText
+  let spreadsheetRows = []
+  let mimeType = declaredMimeType
+
+  if (dataUrl) {
+    const parsed = parseDataUrl(dataUrl)
+    mimeType = mimeType || parsed.mimeType
+    const lowerName = sourceName.toLowerCase()
+
+    try {
+      if (
+        mimeType.includes('spreadsheet') ||
+        mimeType.includes('excel') ||
+        mimeType.includes('csv') ||
+        lowerName.endsWith('.xlsx') ||
+        lowerName.endsWith('.xls') ||
+        lowerName.endsWith('.csv') ||
+        lowerName.endsWith('.tsv')
+      ) {
+        const workbook = XLSX.read(parsed.buffer, { type: 'buffer', raw: false })
+        spreadsheetRows = rowsFromWorksheet(workbook)
+        if (!extractedText) {
+          extractedText = workbook.SheetNames
+            .map(sheetName => XLSX.utils.sheet_to_csv(workbook.Sheets[sheetName]))
+            .join('\n')
+        }
+      } else if (mimeType.includes('pdf') || lowerName.endsWith('.pdf')) {
+        extractedText = [extractedText, await extractPdfText(parsed.buffer)].filter(Boolean).join('\n')
+      } else if (mimeType.startsWith('text/') || lowerName.endsWith('.txt')) {
+        extractedText = [extractedText, parsed.buffer.toString('utf8')].filter(Boolean).join('\n')
+      }
+    } catch (error) {
+      warnings.push(`Could not parse ${sourceName}: ${error.message}`)
+    }
+  }
+
+  return {
+    sourceName,
+    mimeType,
+    dataUrl,
+    text: extractedText,
+    spreadsheetRows,
+    warnings
+  }
+}
+
+function extractOpenAIOutputText(payload) {
+  if (!payload || typeof payload !== 'object') return ''
+  if (typeof payload.output_text === 'string') return payload.output_text
+
+  const chunks = []
+  for (const output of payload.output || []) {
+    for (const content of output.content || []) {
+      if (content.type === 'output_text' && content.text) chunks.push(content.text)
+      if (content.type === 'text' && content.text) chunks.push(content.text)
+    }
+  }
+
+  return chunks.join('\n')
+}
+
+async function extractImportRowsWithAI({ text, dataUrl, mimeType, sourceName }) {
+  const apiKey = String(process.env.OPENAI_API_KEY || '').trim()
+  if (!apiKey) return { records: [], aiUsed: false, warning: 'OPENAI_API_KEY is not configured; used deterministic import parsing only.' }
+
+  const content = [
+    {
+      type: 'input_text',
+      text: [
+        'Extract FiltraCore filter sheet rows from the provided source.',
+        'Return JSON with records only. Each record should include: venue, machine, reorderNumber, filterType, quantity, category, brand, model, serialNumber, building, floor, zone, exactLocation, vendorName, confidence.',
+        'Do not invent rows. Use null or empty strings for unknown optional fields. Quantity must be a number. The source often has columns: Venue, Machine, ReOrder#, Filter Type, FILTER AMOUNT.'
+      ].join('\n')
+    }
+  ]
+
+  if (text) {
+    content.push({
+      type: 'input_text',
+      text: `Source text:\n${text.slice(0, 40000)}`
+    })
+  }
+
+  if (dataUrl && mimeType.startsWith('image/')) {
+    content.push({
+      type: 'input_image',
+      detail: 'high',
+      image_url: dataUrl
+    })
+  } else if (dataUrl && mimeType.includes('pdf')) {
+    content.push({
+      type: 'input_file',
+      filename: sourceName || 'filtracore-import.pdf',
+      file_data: dataUrl
+    })
+  }
+
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), 30000)
+
+  try {
+    const response = await fetch('https://api.openai.com/v1/responses', {
+      method: 'POST',
+      signal: controller.signal,
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        model: process.env.OPENAI_IMPORT_MODEL || 'gpt-5.5',
+        input: [
+          {
+            role: 'user',
+            content
+          }
+        ],
+        text: {
+          format: {
+            type: 'json_schema',
+            name: 'filtracore_import_records',
+            schema: {
+              type: 'object',
+              additionalProperties: false,
+              properties: {
+                records: {
+                  type: 'array',
+                  items: {
+                    type: 'object',
+                    additionalProperties: false,
+                    properties: {
+                      venue: { type: ['string', 'null'] },
+                      machine: { type: ['string', 'null'] },
+                      reorderNumber: { type: ['string', 'null'] },
+                      filterType: { type: ['string', 'null'] },
+                      quantity: { type: ['number', 'null'] },
+                      category: { type: ['string', 'null'] },
+                      brand: { type: ['string', 'null'] },
+                      model: { type: ['string', 'null'] },
+                      serialNumber: { type: ['string', 'null'] },
+                      building: { type: ['string', 'null'] },
+                      floor: { type: ['string', 'null'] },
+                      zone: { type: ['string', 'null'] },
+                      exactLocation: { type: ['string', 'null'] },
+                      vendorName: { type: ['string', 'null'] },
+                      confidence: { type: ['number', 'null'] }
+                    },
+                    required: [
+                      'venue',
+                      'machine',
+                      'reorderNumber',
+                      'filterType',
+                      'quantity',
+                      'category',
+                      'brand',
+                      'model',
+                      'serialNumber',
+                      'building',
+                      'floor',
+                      'zone',
+                      'exactLocation',
+                      'vendorName',
+                      'confidence'
+                    ]
+                  }
+                }
+              },
+              required: ['records']
+            },
+            strict: true
+          }
+        }
+      })
+    })
+
+    const payload = await response.json()
+    if (!response.ok) {
+      return {
+        records: [],
+        aiUsed: false,
+        warning: payload.error?.message || `OpenAI import extraction failed with status ${response.status}.`
+      }
+    }
+
+    const outputText = extractOpenAIOutputText(payload)
+    const parsed = JSON.parse(outputText || '{"records":[]}')
+    const records = Array.isArray(parsed.records)
+      ? parsed.records.map(normalizeImportRecord).filter(Boolean)
+      : []
+
+    return { records, aiUsed: true, warning: '' }
+  } catch (error) {
+    return {
+      records: [],
+      aiUsed: false,
+      warning: `AI import extraction failed: ${error.message}`
+    }
+  } finally {
+    clearTimeout(timeout)
+  }
+}
+
+function dedupeImportRecords(records) {
+  const seen = new Set()
+  const result = []
+
+  for (const record of records) {
+    const normalized = normalizeImportRecord(record)
+    if (!normalized) continue
+
+    const key = [
+      normalized.venue,
+      normalized.machine,
+      normalized.reorderNumber,
+      normalized.filterType,
+      normalized.quantity
+    ].map(value => String(value).toLowerCase()).join('|')
+
+    if (seen.has(key)) continue
+    seen.add(key)
+    result.push(normalized)
+  }
+
+  return result
+}
+
+async function buildImportPreview(body) {
+  const content = await extractImportContent(body)
+  const deterministicRows = dedupeImportRecords([
+    ...content.spreadsheetRows,
+    ...parseImportRowsFromText(content.text)
+  ])
+
+  const aiResult = await extractImportRowsWithAI(content)
+  const records = dedupeImportRecords(aiResult.records.length ? aiResult.records : deterministicRows)
+  const warnings = [...content.warnings]
+  if (aiResult.warning) warnings.push(aiResult.warning)
+  if (!records.length && content.mimeType.startsWith('image/') && !process.env.OPENAI_API_KEY) {
+    warnings.push('Photo import needs OPENAI_API_KEY for vision extraction, or paste OCR/text from the sheet.')
+  }
+
+  return {
+    sourceName: content.sourceName,
+    sourceType: content.mimeType || 'text/plain',
+    aiUsed: aiResult.aiUsed,
+    records,
+    warnings
+  }
+}
+
+async function findOrCreateImportedInventory(db, tenantId, record) {
+  const existing = await db.query(
+    `
+    SELECT inventory_id
+    FROM inventory
+    WHERE tenant_id = $1
+      AND (
+        (
+          NULLIF($2, '') IS NOT NULL
+          AND
+          LOWER(COALESCE(reorder_number, '')) = LOWER($2)
+          AND LOWER(COALESCE(filter_type, category, name, '')) = LOWER($4)
+        )
+        OR (
+          NULLIF($2, '') IS NULL
+          AND
+          LOWER(name) = LOWER($3)
+          AND LOWER(COALESCE(filter_type, category, '')) = LOWER($4)
+        )
+      )
+    ORDER BY inventory_id ASC
+    LIMIT 1
+    `,
+    [tenantId, record.reorderNumber, record.filterType, record.filterType]
+  )
+
+  if (existing.rowCount > 0) {
+    await db.query(
+      `
+      UPDATE inventory
+      SET
+        reorder_number = COALESCE(NULLIF($3, ''), reorder_number),
+        filter_type = COALESCE(NULLIF($4, ''), filter_type),
+        vendor_name = COALESCE(NULLIF($5, ''), vendor_name),
+        reorder_level = GREATEST(COALESCE(reorder_level, 0), $6)
+      WHERE inventory_id = $2
+        AND tenant_id = $1
+      `,
+      [tenantId, existing.rows[0].inventory_id, record.reorderNumber, record.filterType, record.vendorName, record.quantity]
+    )
+    return Number(existing.rows[0].inventory_id)
+  }
+
+  const created = await db.query(
+    `
+    INSERT INTO inventory
+    (
+      tenant_id,
+      name,
+      category,
+      reorder_number,
+      filter_type,
+      vendor_name,
+      stock,
+      unit_cost,
+      reorder_level,
+      life_months
+    )
+    VALUES ($1, $2, $3, $4, $5, $6, 0, 0, $7, $8)
+    RETURNING inventory_id
+    `,
+    [
+      tenantId,
+      record.filterType,
+      record.category || record.machine,
+      record.reorderNumber,
+      record.filterType,
+      record.vendorName || null,
+      record.quantity,
+      getDefaultLifeMonths(record.category || record.machine)
+    ]
+  )
+
+  return Number(created.rows[0].inventory_id)
+}
+
+async function findOrCreateImportedMachine(db, tenantId, record) {
+  const facilityId = await findOrCreateFacility(db, tenantId, record.venue, {
+    building: record.building
+  })
+  const existing = await db.query(
+    `
+    SELECT machine_id
+    FROM machines
+    WHERE tenant_id = $1
+      AND LOWER(name) = LOWER($2)
+      AND LOWER(location) = LOWER($3)
+    ORDER BY machine_id ASC
+    LIMIT 1
+    `,
+    [tenantId, record.machine, record.venue]
+  )
+
+  if (existing.rowCount > 0) {
+    await db.query(
+      `
+      UPDATE machines
+      SET
+        facility_id = COALESCE(facility_id, $3),
+        category = COALESCE(NULLIF($4, ''), category),
+        brand = COALESCE(NULLIF($5, ''), brand),
+        model = COALESCE(NULLIF($6, ''), model),
+        serial_number = COALESCE(NULLIF($7, ''), serial_number),
+        building = COALESCE(NULLIF($8, ''), building),
+        floor = COALESCE(NULLIF($9, ''), floor),
+        zone = COALESCE(NULLIF($10, ''), zone),
+        exact_location = COALESCE(NULLIF($11, ''), exact_location)
+      WHERE tenant_id = $1
+        AND machine_id = $2
+      `,
+      [
+        tenantId,
+        existing.rows[0].machine_id,
+        facilityId,
+        record.category || record.machine,
+        record.brand,
+        record.model,
+        record.serialNumber,
+        record.building,
+        record.floor,
+        record.zone,
+        record.exactLocation || record.venue
+      ]
+    )
+    return Number(existing.rows[0].machine_id)
+  }
+
+  const created = await db.query(
+    `
+    INSERT INTO machines
+    (
+      tenant_id,
+      facility_id,
+      name,
+      type,
+      category,
+      location,
+      department,
+      brand,
+      model,
+      serial_number,
+      building,
+      floor,
+      zone,
+      exact_location,
+      asset_id,
+      health_status
+    )
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, 'Imported')
+    RETURNING machine_id
+    `,
+    [
+      tenantId,
+      facilityId,
+      record.machine,
+      record.machine,
+      record.category || record.machine,
+      record.venue,
+      record.venue,
+      record.brand || null,
+      record.model || null,
+      record.serialNumber || null,
+      record.building || null,
+      record.floor || null,
+      record.zone || null,
+      record.exactLocation || record.venue,
+      `${slugify(record.venue).toUpperCase()}-${slugify(record.machine).toUpperCase()}`
+    ]
+  )
+
+  return Number(created.rows[0].machine_id)
+}
+
+async function applyImportRecords(auth, recordsInput, metadata = {}, options = {}) {
+  const records = dedupeImportRecords(recordsInput)
+  if (!records.length) throw badRequest('No import records were detected')
+
+  const client = await pool.connect()
+
+  try {
+    await client.query('BEGIN')
+
+    const tenantId = auth.tenantId
+    const existingMachineKeys = new Set()
+    const existingMachines = await client.query(
+      'SELECT LOWER(name) AS name, LOWER(location) AS location FROM machines WHERE tenant_id = $1',
+      [tenantId]
+    )
+    existingMachines.rows.forEach(row => existingMachineKeys.add(`${row.name}|${row.location}`))
+
+    const newMachineKeys = new Set()
+    records.forEach(record => {
+      const key = `${record.machine.toLowerCase()}|${record.venue.toLowerCase()}`
+      if (!existingMachineKeys.has(key)) newMachineKeys.add(key)
+    })
+
+    const access = await getMachineAccess(client, tenantId)
+    if (!options.bypassMachineLimit && !access.unlimited && access.limit !== null && access.machines + newMachineKeys.size > access.limit) {
+      throw badRequest(`Import would create ${newMachineKeys.size} new machines and exceed the ${access.limit}-machine Standard limit.`)
+    }
+
+    let machinesCreated = 0
+    let filtersCreated = 0
+    let inventoryCreated = 0
+    let filtersUpdated = 0
+
+    for (const record of records) {
+      const beforeInventory = await client.query('SELECT COUNT(*)::int AS count FROM inventory WHERE tenant_id = $1', [tenantId])
+      const inventoryId = await findOrCreateImportedInventory(client, tenantId, record)
+      const afterInventory = await client.query('SELECT COUNT(*)::int AS count FROM inventory WHERE tenant_id = $1', [tenantId])
+      if (toNumber(afterInventory.rows[0]?.count) > toNumber(beforeInventory.rows[0]?.count)) inventoryCreated += 1
+
+      const beforeMachines = await client.query('SELECT COUNT(*)::int AS count FROM machines WHERE tenant_id = $1', [tenantId])
+      const machineId = await findOrCreateImportedMachine(client, tenantId, record)
+      const afterMachines = await client.query('SELECT COUNT(*)::int AS count FROM machines WHERE tenant_id = $1', [tenantId])
+      if (toNumber(afterMachines.rows[0]?.count) > toNumber(beforeMachines.rows[0]?.count)) machinesCreated += 1
+
+      const existingFilter = await client.query(
+        `
+        SELECT filter_id
+        FROM filters
+        WHERE tenant_id = $1
+          AND machine_id = $2
+          AND inventory_id = $3
+        LIMIT 1
+        `,
+        [tenantId, machineId, inventoryId]
+      )
+
+      if (existingFilter.rowCount > 0) {
+        await client.query(
+          `
+          UPDATE filters
+          SET
+            filter_quantity = $4,
+            vendor_name = COALESCE(NULLIF($5, ''), vendor_name)
+          WHERE tenant_id = $1
+            AND machine_id = $2
+            AND inventory_id = $3
+          `,
+          [tenantId, machineId, inventoryId, record.quantity, record.vendorName]
+        )
+        filtersUpdated += 1
+      } else {
+        const installedAt = toDateString(new Date())
+        const lifeMonths = getDefaultLifeMonths(record.category || record.machine)
+
+        await client.query(
+          `
+          INSERT INTO filters
+          (
+            tenant_id,
+            machine_id,
+            inventory_id,
+            psi,
+            psi_min,
+            psi_max,
+            filter_quantity,
+            vendor_name,
+            life_months,
+            installed_at,
+            due_date,
+            status
+          )
+          VALUES ($1, $2, $3, NULL, 50, 70, $4, $5, $6, $7, $8, 'Imported')
+          `,
+          [
+            tenantId,
+            machineId,
+            inventoryId,
+            record.quantity,
+            record.vendorName || null,
+            lifeMonths,
+            installedAt,
+            addMonths(installedAt, lifeMonths)
+          ]
+        )
+        filtersCreated += 1
+      }
+    }
+
+    await client.query(
+      `
+      INSERT INTO import_batches
+      (
+        tenant_id,
+        source_name,
+        source_type,
+        detected_records,
+        applied_records,
+        ai_used,
+        warnings
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb)
+      `,
+      [
+        tenantId,
+        metadata.sourceName || 'Smart import',
+        metadata.sourceType || '',
+        records.length,
+        records.length,
+        Boolean(metadata.aiUsed),
+        JSON.stringify(metadata.warnings || [])
+      ]
+    )
+
+    const state = await getState(auth, client)
+    await client.query('COMMIT')
+
+    return {
+      ...state,
+      importSummary: {
+        detected: records.length,
+        applied: records.length,
+        machinesCreated,
+        inventoryCreated,
+        filtersCreated,
+        filtersUpdated
+      }
+    }
+  } catch (error) {
+    await client.query('ROLLBACK')
+    throw error
+  } finally {
+    client.release()
+  }
+}
+
+async function ensureWaterfilterSetupData(db, tenantId) {
+  await removeStarterSampleData(db, tenantId)
+
+  const existingBatch = await db.query(
+    'SELECT import_batch_id FROM import_batches WHERE tenant_id = $1 AND source_name = $2 LIMIT 1',
+    [tenantId, waterfilterSetupSourceName]
+  )
+
+  if (existingBatch.rowCount > 0) return
+
+  await applyImportRecords(
+    { tenantId },
+    waterfilterSetupRecords,
+    {
+      sourceName: waterfilterSetupSourceName,
+      sourceType: 'seed/waterfilters-photo',
+      aiUsed: false,
+      warnings: []
+    },
+    { bypassMachineLimit: true }
+  )
 }
 
 async function createSession(userId) {
@@ -1694,12 +3579,44 @@ app.post('/api/sync/accounts', async (req, res) => {
 
 app.use('/api', requireAuth)
 app.use('/machines', requireAuth)
+app.use('/suppliers', requireAuth)
+app.use('/supplier-products', requireAuth)
+app.use('/purchase-orders', requireAuth)
 
 app.get('/api/state', async (req, res) => {
   try {
     await sendState(req, res)
   } catch (error) {
     handleError(res, error, 'Failed to fetch app data')
+  }
+})
+
+app.post('/api/import/preview', async (req, res) => {
+  try {
+    const preview = await buildImportPreview(req.body || {})
+    res.json(preview)
+  } catch (error) {
+    handleError(res, error, 'Failed to preview import')
+  }
+})
+
+app.post('/api/import/apply', async (req, res) => {
+  try {
+    const body = req.body || {}
+    const preview = Array.isArray(body.records)
+      ? {
+        sourceName: cleanImportText(body.sourceName || 'Smart import'),
+        sourceType: cleanImportText(body.sourceType || ''),
+        aiUsed: Boolean(body.aiUsed),
+        records: dedupeImportRecords(body.records),
+        warnings: Array.isArray(body.warnings) ? body.warnings : []
+      }
+      : await buildImportPreview(body)
+
+    const state = await applyImportRecords(req.auth, preview.records, preview)
+    res.status(201).json(state)
+  } catch (error) {
+    handleError(res, error, 'Failed to apply import')
   }
 })
 
@@ -1726,44 +3643,75 @@ async function createMachine(req, res) {
     const {
       name,
       type,
+      category,
       location,
       department,
       brand,
-      model
+      model,
+      serialNumber,
+      serial_number,
+      building,
+      floor,
+      zone,
+      exactLocation,
+      exact_location,
+      healthStatus,
+      health_status
     } = req.body
 
     const assetId = req.body.assetId ?? req.body.asset_id
+    const facilityIdInput = toNullableNumber(req.body.facilityId ?? req.body.facility_id)
+    const facilityName = req.body.facilityName ?? req.body.facility_name ?? location
 
     if (!name || !type || !location) {
       throw badRequest('Machine name, type, and location are required')
     }
 
     await assertCanCreateMachine(req.auth)
+    const facilityId = facilityIdInput || await findOrCreateFacility(pool, req.auth.tenantId, facilityName, { building })
 
     await pool.query(
       `
       INSERT INTO machines
       (
         tenant_id,
+        facility_id,
         name,
         type,
+        category,
         location,
         department,
         brand,
         model,
-        asset_id
+        serial_number,
+        building,
+        floor,
+        zone,
+        exact_location,
+        asset_id,
+        qr_payload,
+        health_status
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
       `,
       [
         req.auth.tenantId,
+        facilityId,
         name,
         type,
+        category || type,
         location,
         department || null,
         brand || null,
         model || null,
-        assetId || null
+        serialNumber || serial_number || null,
+        building || null,
+        floor || null,
+        zone || null,
+        exactLocation || exact_location || location,
+        assetId || null,
+        null,
+        healthStatus || health_status || 'Unknown'
       ]
     )
 
@@ -1880,6 +3828,14 @@ app.post('/api/inventory', async (req, res) => {
     const {
       name,
       category,
+      reorderNumber,
+      reorder_number,
+      filterType,
+      filter_type,
+      vendorName,
+      vendor_name,
+      vendorContact,
+      vendor_contact,
       stock,
       unitCost,
       unit_cost,
@@ -1900,17 +3856,25 @@ app.post('/api/inventory', async (req, res) => {
         tenant_id,
         name,
         category,
+        reorder_number,
+        filter_type,
+        vendor_name,
+        vendor_contact,
         stock,
         unit_cost,
         reorder_level,
         life_months
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
       `,
       [
         req.auth.tenantId,
         name,
         category,
+        reorderNumber ?? reorder_number ?? null,
+        filterType ?? filter_type ?? category,
+        vendorName ?? vendor_name ?? null,
+        vendorContact ?? vendor_contact ?? null,
         toNumber(stock),
         toNumber(unitCost ?? unit_cost),
         toNumber(reorderLevel ?? reorder_level),
@@ -1921,6 +3885,402 @@ app.post('/api/inventory', async (req, res) => {
     await sendState(req, res, 201)
   } catch (error) {
     handleError(res, error, 'Failed to create inventory item')
+  }
+})
+
+const validSupplierStatuses = new Set(['active', 'inactive'])
+const validPurchaseOrderStatuses = new Set(['Draft', 'Sent', 'Received', 'Cancelled'])
+
+function normalizeSupplierStatus(status) {
+  const normalized = String(status || 'active').trim().toLowerCase()
+  return validSupplierStatuses.has(normalized) ? normalized : 'active'
+}
+
+function normalizePurchaseOrderStatus(status) {
+  const normalized = String(status || 'Draft').trim().toLowerCase()
+  const match = Array.from(validPurchaseOrderStatuses).find(value => value.toLowerCase() === normalized)
+  return match || 'Draft'
+}
+
+function getRequestedPrice(value) {
+  if (value === null || value === undefined || value === '') return null
+  const price = Number(value)
+  return Number.isFinite(price) ? roundCurrency(price) : null
+}
+
+function generatePurchaseOrderNumber() {
+  return `FC-PO-${Date.now().toString().slice(-8)}`
+}
+
+app.get(['/api/suppliers', '/suppliers'], async (req, res) => {
+  try {
+    const state = await getState(req.auth)
+    res.json(state.suppliers)
+  } catch (error) {
+    handleError(res, error, 'Failed to fetch suppliers')
+  }
+})
+
+app.post(['/api/suppliers', '/suppliers'], async (req, res) => {
+  try {
+    const {
+      name,
+      contact,
+      contactName,
+      contact_name,
+      email,
+      phone,
+      website,
+      category,
+      notes,
+      status
+    } = req.body
+
+    if (!String(name || '').trim()) {
+      throw badRequest('Supplier name is required')
+    }
+
+    await pool.query(
+      `
+      INSERT INTO suppliers
+      (
+        tenant_id,
+        name,
+        contact_name,
+        email,
+        phone,
+        website,
+        category,
+        notes,
+        status
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+      `,
+      [
+        req.auth.tenantId,
+        String(name).trim(),
+        contact ?? contactName ?? contact_name ?? null,
+        email || null,
+        phone || null,
+        website || null,
+        category || null,
+        notes || null,
+        normalizeSupplierStatus(status)
+      ]
+    )
+
+    await sendState(req, res, 201)
+  } catch (error) {
+    handleError(res, error, 'Failed to create supplier')
+  }
+})
+
+app.get(['/api/supplier-products', '/supplier-products'], async (req, res) => {
+  try {
+    const state = await getState(req.auth)
+    res.json(state.supplierProducts)
+  } catch (error) {
+    handleError(res, error, 'Failed to fetch supplier products')
+  }
+})
+
+app.post(['/api/supplier-products', '/supplier-products'], async (req, res) => {
+  const client = await pool.connect()
+
+  try {
+    const tenantId = req.auth.tenantId
+    const supplierId = toNullableNumber(req.body.supplierId ?? req.body.supplier_id)
+    const inventoryId = toNullableNumber(req.body.inventoryId ?? req.body.inventory_item_id ?? req.body.inventory_id)
+    const supplierSku = String(req.body.supplierSku ?? req.body.supplier_sku ?? '').trim()
+    const productName = String(req.body.productName ?? req.body.product_name ?? '').trim()
+    const currentPrice = getRequestedPrice(req.body.currentPrice ?? req.body.current_price ?? req.body.price)
+    const notes = req.body.notes || null
+    const status = normalizeSupplierStatus(req.body.status)
+
+    if (!supplierId || !inventoryId || currentPrice === null || currentPrice < 0) {
+      throw badRequest('Supplier, inventory item, and current price are required')
+    }
+
+    await client.query('BEGIN')
+
+    const supplierResult = await client.query(
+      'SELECT supplier_id FROM suppliers WHERE supplier_id = $1 AND tenant_id = $2',
+      [supplierId, tenantId]
+    )
+
+    if (supplierResult.rowCount === 0) {
+      throw badRequest('Supplier not found')
+    }
+
+    const inventoryResult = await client.query(
+      'SELECT inventory_id, name FROM inventory WHERE inventory_id = $1 AND tenant_id = $2',
+      [inventoryId, tenantId]
+    )
+
+    if (inventoryResult.rowCount === 0) {
+      throw badRequest('Inventory item not found')
+    }
+
+    const existing = await client.query(
+      `
+      SELECT supplier_product_id, current_price, last_price
+      FROM supplier_products
+      WHERE tenant_id = $1
+        AND supplier_id = $2
+        AND inventory_id = $3
+        AND COALESCE(supplier_sku, '') = COALESCE($4, '')
+      ORDER BY supplier_product_id ASC
+      LIMIT 1
+      FOR UPDATE
+      `,
+      [tenantId, supplierId, inventoryId, supplierSku || null]
+    )
+
+    let supplierProductId
+    let previousPrice = null
+
+    if (existing.rowCount > 0) {
+      const row = existing.rows[0]
+      supplierProductId = Number(row.supplier_product_id)
+      previousPrice = toNumber(row.current_price)
+
+      await client.query(
+        `
+        UPDATE supplier_products
+        SET
+          product_name = COALESCE(NULLIF($5, ''), product_name),
+          current_price = $6,
+          last_price = CASE
+            WHEN current_price IS DISTINCT FROM $6 THEN current_price
+            ELSE last_price
+          END,
+          last_updated_at = CURRENT_TIMESTAMP,
+          notes = COALESCE($7, notes),
+          status = $8,
+          updated_at = CURRENT_TIMESTAMP
+        WHERE supplier_product_id = $4
+          AND tenant_id = $1
+        `,
+        [
+          tenantId,
+          supplierId,
+          inventoryId,
+          supplierProductId,
+          productName,
+          currentPrice,
+          notes,
+          status
+        ]
+      )
+    } else {
+      const created = await client.query(
+        `
+        INSERT INTO supplier_products
+        (
+          tenant_id,
+          supplier_id,
+          inventory_id,
+          supplier_sku,
+          product_name,
+          current_price,
+          last_price,
+          last_updated_at,
+          notes,
+          status
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, NULL, CURRENT_TIMESTAMP, $7, $8)
+        RETURNING supplier_product_id
+        `,
+        [
+          tenantId,
+          supplierId,
+          inventoryId,
+          supplierSku || null,
+          productName || inventoryResult.rows[0].name,
+          currentPrice,
+          notes,
+          status
+        ]
+      )
+
+      supplierProductId = Number(created.rows[0].supplier_product_id)
+    }
+
+    if (previousPrice === null || previousPrice !== currentPrice) {
+      await client.query(
+        `
+        INSERT INTO price_history
+        (
+          tenant_id,
+          supplier_product_id,
+          supplier_id,
+          inventory_id,
+          price,
+          previous_price,
+          source,
+          notes
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, 'manual', $7)
+        `,
+        [tenantId, supplierProductId, supplierId, inventoryId, currentPrice, previousPrice, notes]
+      )
+    }
+
+    await client.query('COMMIT')
+    await sendState(req, res, 201)
+  } catch (error) {
+    await client.query('ROLLBACK')
+    handleError(res, error, 'Failed to save supplier product')
+  } finally {
+    client.release()
+  }
+})
+
+app.get(['/api/purchase-orders', '/purchase-orders'], async (req, res) => {
+  try {
+    const state = await getState(req.auth)
+    res.json(state.purchaseOrders)
+  } catch (error) {
+    handleError(res, error, 'Failed to fetch purchase orders')
+  }
+})
+
+app.post(['/api/purchase-orders', '/purchase-orders'], async (req, res) => {
+  const client = await pool.connect()
+
+  try {
+    const tenantId = req.auth.tenantId
+    const supplierId = toNullableNumber(req.body.supplierId ?? req.body.supplier_id)
+    const status = normalizePurchaseOrderStatus(req.body.status)
+    const expectedDate = toDateString(req.body.expectedDate ?? req.body.expected_date)
+    const poNumber = String(req.body.poNumber ?? req.body.po_number ?? '').trim() || generatePurchaseOrderNumber()
+    const notes = req.body.notes || null
+    const itemsInput = Array.isArray(req.body.items) ? req.body.items : []
+
+    if (!supplierId) {
+      throw badRequest('Supplier is required for a purchase order')
+    }
+
+    await client.query('BEGIN')
+
+    const supplierResult = await client.query(
+      'SELECT supplier_id FROM suppliers WHERE supplier_id = $1 AND tenant_id = $2',
+      [supplierId, tenantId]
+    )
+
+    if (supplierResult.rowCount === 0) {
+      throw badRequest('Supplier not found')
+    }
+
+    const items = []
+
+    for (const item of itemsInput) {
+      const supplierProductId = toNullableNumber(item.supplierProductId ?? item.supplier_product_id)
+      let inventoryId = toNullableNumber(item.inventoryId ?? item.inventory_id)
+      let unitPrice = getRequestedPrice(item.unitPrice ?? item.unit_price ?? item.price)
+      const quantity = Math.max(1, toNumber(item.quantity, 1))
+
+      if (supplierProductId) {
+        const productResult = await client.query(
+          `
+          SELECT supplier_product_id, inventory_id, current_price
+          FROM supplier_products
+          WHERE supplier_product_id = $1
+            AND supplier_id = $2
+            AND tenant_id = $3
+          `,
+          [supplierProductId, supplierId, tenantId]
+        )
+
+        if (productResult.rowCount === 0) {
+          throw badRequest('Supplier product not found')
+        }
+
+        inventoryId = Number(productResult.rows[0].inventory_id)
+        unitPrice = unitPrice === null ? toNumber(productResult.rows[0].current_price) : unitPrice
+      }
+
+      if (!inventoryId || unitPrice === null || unitPrice < 0) continue
+
+      const inventoryResult = await client.query(
+        'SELECT inventory_id FROM inventory WHERE inventory_id = $1 AND tenant_id = $2',
+        [inventoryId, tenantId]
+      )
+
+      if (inventoryResult.rowCount === 0) continue
+
+      items.push({
+        supplierProductId,
+        inventoryId,
+        quantity,
+        unitPrice,
+        lineTotal: roundCurrency(quantity * unitPrice),
+        notes: item.notes || null
+      })
+    }
+
+    const totalAmount = items.reduce((total, item) => total + item.lineTotal, 0)
+    const sentAt = status === 'Sent' ? new Date() : null
+    const receivedAt = status === 'Received' ? new Date() : null
+    const orderResult = await client.query(
+      `
+      INSERT INTO purchase_orders
+      (
+        tenant_id,
+        supplier_id,
+        po_number,
+        status,
+        expected_date,
+        sent_at,
+        received_at,
+        notes,
+        total_amount
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+      RETURNING purchase_order_id
+      `,
+      [tenantId, supplierId, poNumber, status, expectedDate, sentAt, receivedAt, notes, roundCurrency(totalAmount)]
+    )
+
+    const purchaseOrderId = Number(orderResult.rows[0].purchase_order_id)
+
+    for (const item of items) {
+      await client.query(
+        `
+        INSERT INTO purchase_order_items
+        (
+          tenant_id,
+          purchase_order_id,
+          inventory_id,
+          supplier_product_id,
+          quantity,
+          unit_price,
+          line_total,
+          received_quantity,
+          notes
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, 0, $8)
+        `,
+        [
+          tenantId,
+          purchaseOrderId,
+          item.inventoryId,
+          item.supplierProductId,
+          item.quantity,
+          item.unitPrice,
+          item.lineTotal,
+          item.notes
+        ]
+      )
+    }
+
+    await client.query('COMMIT')
+    await sendState(req, res, 201)
+  } catch (error) {
+    await client.query('ROLLBACK')
+    handleError(res, error, 'Failed to create purchase order')
+  } finally {
+    client.release()
   }
 })
 
@@ -1944,6 +4304,10 @@ app.post('/api/filters', async (req, res) => {
     const installedAt = toDateString(req.body.installedAt ?? req.body.installed_at)
     const dueDate = toDateString(req.body.dueDate ?? req.body.due_date ?? addMonths(installedAt, lifeMonths))
     const psi = toNullableNumber(req.body.psi)
+    const psiMin = toNullableNumber(req.body.psiMin ?? req.body.psi_min)
+    const psiMax = toNullableNumber(req.body.psiMax ?? req.body.psi_max)
+    const filterQuantity = Math.max(1, toNumber(req.body.filterQuantity ?? req.body.filter_quantity, 1))
+    const vendorName = req.body.vendorName ?? req.body.vendor_name
 
     if (!machineId || !inventoryId || !lifeMonths) {
       throw badRequest('Machine, filter product, and lifespan are required')
@@ -1969,7 +4333,7 @@ app.post('/api/filters', async (req, res) => {
       throw badRequest('Filter product not found')
     }
 
-    if (toNumber(inventoryResult.rows[0].stock) <= 0) {
+    if (toNumber(inventoryResult.rows[0].stock) < filterQuantity) {
       throw badRequest('No stock available for this filter product')
     }
 
@@ -1981,17 +4345,25 @@ app.post('/api/filters', async (req, res) => {
         machine_id,
         inventory_id,
         psi,
+        psi_min,
+        psi_max,
+        filter_quantity,
+        vendor_name,
         life_months,
         installed_at,
         due_date
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
       `,
       [
         tenantId,
         machineId,
         inventoryId,
         psi,
+        psiMin,
+        psiMax,
+        filterQuantity,
+        vendorName || null,
         lifeMonths,
         installedAt,
         dueDate
@@ -1999,8 +4371,16 @@ app.post('/api/filters', async (req, res) => {
     )
 
     await client.query(
-      'UPDATE inventory SET stock = stock - 1 WHERE inventory_id = $1 AND tenant_id = $2',
-      [inventoryId, tenantId]
+      'UPDATE inventory SET stock = stock - $3 WHERE inventory_id = $1 AND tenant_id = $2',
+      [inventoryId, tenantId, filterQuantity]
+    )
+
+    await client.query(
+      `
+      INSERT INTO inventory_usage (tenant_id, inventory_id, machine_id, quantity, reason, used_at)
+      VALUES ($1, $2, $3, $4, $5, $6)
+      `,
+      [tenantId, inventoryId, machineId, filterQuantity, 'filter_install', installedAt]
     )
 
     await client.query('COMMIT')
@@ -2043,7 +4423,7 @@ app.patch('/api/filters/:id/psi', async (req, res) => {
       [psi, filterId, tenantId]
     )
 
-    await client.query(
+    const maintenanceInsert = await client.query(
       `
       INSERT INTO maintenance
       (
@@ -2056,8 +4436,36 @@ app.patch('/api/filters/:id/psi', async (req, res) => {
         corrected_psi
       )
       VALUES ($1, $2, $3, $4, $5, $6, $7)
+      RETURNING maintenance_id
       `,
       [
+        tenantId,
+        filter.machine_id,
+        filterId,
+        'PSI Update',
+        'Updated from filter dashboard',
+        toNullableNumber(filter.psi),
+        psi
+      ]
+    )
+
+    await client.query(
+      `
+      INSERT INTO maintenance_logs
+      (
+        legacy_maintenance_id,
+        tenant_id,
+        machine_id,
+        filter_id,
+        maintenance_type,
+        notes,
+        current_psi,
+        corrected_psi
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+      `,
+      [
+        maintenanceInsert.rows[0].maintenance_id,
         tenantId,
         filter.machine_id,
         filterId,
@@ -2099,6 +4507,11 @@ app.post('/api/maintenance', async (req, res) => {
     const notes = req.body.notes || ''
     const performedAt = toDateString(req.body.date ?? req.body.performed_at)
     const correctedPsi = toNullableNumber(req.body.correctedPsi ?? req.body.corrected_psi)
+    let technicianId = toNullableNumber(req.body.technicianId ?? req.body.technician_id)
+    const technicianName = String(req.body.technicianName ?? req.body.technician_name ?? '').trim()
+    const inspectionStatus = String(req.body.inspectionStatus ?? req.body.inspection_status ?? '').trim()
+    const priority = String(req.body.priority || '').trim()
+    const nextDueDate = req.body.nextDueDate || req.body.next_due_date ? toDateString(req.body.nextDueDate ?? req.body.next_due_date) : null
     const isReplacement = String(type).toLowerCase().includes('replace')
 
     if (!machineId || !type || !performedAt) {
@@ -2110,6 +4523,10 @@ app.post('/api/maintenance', async (req, res) => {
     }
 
     await client.query('BEGIN')
+
+    if (!technicianId && technicianName) {
+      technicianId = await findOrCreateTechnician(client, tenantId, technicianName)
+    }
 
     const machineResult = await client.query(
       'SELECT machine_id FROM machines WHERE machine_id = $1 AND tenant_id = $2',
@@ -2157,8 +4574,9 @@ app.post('/api/maintenance', async (req, res) => {
 
       const currentFilter = filterResult.rows[0]
       const replacementProduct = replacementResult.rows[0]
+      const replacementQuantity = Math.max(1, toNumber(currentFilter.filter_quantity, 1))
 
-      if (toNumber(replacementProduct.stock) <= 0) {
+      if (toNumber(replacementProduct.stock) < replacementQuantity) {
         throw badRequest('No stock available for the selected replacement filter')
       }
 
@@ -2170,8 +4588,16 @@ app.post('/api/maintenance', async (req, res) => {
       const dueDate = addMonths(performedAt, lifeMonths)
 
       await client.query(
-        'UPDATE inventory SET stock = stock - 1 WHERE inventory_id = $1 AND tenant_id = $2',
-        [replacementProductId, tenantId]
+        'UPDATE inventory SET stock = stock - $3 WHERE inventory_id = $1 AND tenant_id = $2',
+        [replacementProductId, tenantId, replacementQuantity]
+      )
+
+      await client.query(
+        `
+        INSERT INTO inventory_usage (tenant_id, inventory_id, machine_id, filter_id, quantity, reason, used_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
+        `,
+        [tenantId, replacementProductId, machineId, filterId, replacementQuantity, 'maintenance_replacement', performedAt]
       )
 
       await client.query(
@@ -2214,13 +4640,18 @@ app.post('/api/maintenance', async (req, res) => {
       )
     }
 
-    await client.query(
+    const maintenanceInsert = await client.query(
       `
       INSERT INTO maintenance
       (
         tenant_id,
         machine_id,
         filter_id,
+        technician_id,
+        technician_name,
+        inspection_status,
+        priority,
+        next_due_date,
         maintenance_type,
         notes,
         current_psi,
@@ -2230,12 +4661,18 @@ app.post('/api/maintenance', async (req, res) => {
         replaced_with,
         performed_at
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+      RETURNING maintenance_id
       `,
       [
         tenantId,
         machineId,
         filterId,
+        technicianId,
+        technicianName || null,
+        inspectionStatus || null,
+        priority || null,
+        nextDueDate,
         type,
         notes,
         currentPsi,
@@ -2246,6 +4683,80 @@ app.post('/api/maintenance', async (req, res) => {
         performedAt
       ]
     )
+
+    await client.query(
+      `
+      INSERT INTO maintenance_logs
+      (
+        legacy_maintenance_id,
+        tenant_id,
+        machine_id,
+        filter_id,
+        technician_id,
+        technician_name,
+        maintenance_type,
+        priority,
+        notes,
+        current_psi,
+        corrected_psi,
+        replacement_product_id,
+        replaced_from,
+        replaced_with,
+        performed_at,
+        next_due_date
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+      `,
+      [
+        maintenanceInsert.rows[0].maintenance_id,
+        tenantId,
+        machineId,
+        filterId,
+        technicianId,
+        technicianName || null,
+        type,
+        priority || null,
+        notes,
+        currentPsi,
+        correctedPsi,
+        replacementProductId,
+        replacedFrom,
+        replacedWith,
+        performedAt,
+        nextDueDate
+      ]
+    )
+
+    if (inspectionStatus || String(type).toLowerCase().includes('inspection') || String(type).toLowerCase().includes('review')) {
+      await client.query(
+        `
+        INSERT INTO inspections
+        (
+          tenant_id,
+          machine_id,
+          filter_id,
+          technician_id,
+          inspection_type,
+          result,
+          notes,
+          psi_reading,
+          inspected_at
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        `,
+        [
+          tenantId,
+          machineId,
+          filterId,
+          technicianId,
+          type,
+          inspectionStatus || null,
+          notes,
+          correctedPsi,
+          performedAt
+        ]
+      )
+    }
 
     await client.query('COMMIT')
     await sendState(req, res, 201)
