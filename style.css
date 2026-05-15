@@ -5943,6 +5943,12 @@ body:not(.auth-required):not(.restaurant-required) .smart-setup-close {
   color: #047857;
 }
 
+.supplier-price-source {
+  margin-top: 3px;
+  color: #b45309 !important;
+  font-weight: 800;
+}
+
 .supplier-products-table {
   overflow-x: auto;
   border: 1px solid var(--color-line-soft);
@@ -6017,6 +6023,37 @@ body:not(.auth-required):not(.restaurant-required) .smart-setup-close {
 .price-badge.flat {
   background: #e2e8f0;
   color: #475569;
+}
+
+.source-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 4px 8px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.source-badge.demo {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.source-badge.manual {
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+
+.supplier-row-date {
+  display: block;
+  margin-top: 3px;
+  color: var(--color-subtle);
+  font-size: 10px;
+  font-weight: 800;
 }
 
 .supplier-status-active,

@@ -3500,6 +3500,7 @@ function getSupplierProductLabel(product) {
 function getSupplierProductSearchText(product) {
   const item = getInventoryById(product.inventoryId);
   const supplier = getSupplierById(product.supplierId);
+  const sourceLabel = getSupplierPriceSourceLabel(product);
 
   return [
     product.productName,
@@ -3512,9 +3513,16 @@ function getSupplierProductSearchText(product) {
     supplier?.name,
     supplier?.category,
     product.supplierSku,
+    sourceLabel,
     product.status,
     product.direction
   ].join(' ').toLowerCase();
+}
+
+function getSupplierPriceSourceLabel(product) {
+  const notes = String(product.notes || '').toLowerCase();
+  if (notes.includes('seeded') || notes.includes('demo estimated')) return 'Demo estimate';
+  return 'Manual saved';
 }
 
 function getSupplierComparisonRows() {
@@ -3693,9 +3701,10 @@ function renderSuppliers() {
               <small>${row.products.length} suppliers · ${escapeHTML(stockStatus.status)}</small>
             </div>
             <div class="supplier-best-price">
-              <span>Recommended</span>
+              <span>Lowest saved price</span>
               <strong>${escapeHTML(row.bestSupplierName)}</strong>
-              <small>${formatMoney(row.bestPrice)} · saves ${formatMoney(row.spread)}</small>
+              <small>${formatMoney(row.bestPrice)} · estimated spread ${formatMoney(row.spread)}</small>
+              <small class="supplier-price-source">${escapeHTML(getSupplierPriceSourceLabel(row.best))}</small>
             </div>
           </div>
         `;
@@ -3710,16 +3719,18 @@ function renderSuppliers() {
           <div class="supplier-product-row supplier-product-header">
             <span>Product</span>
             <span>Supplier</span>
-            <span>Current</span>
-            <span>Last</span>
+            <span>Saved Current</span>
+            <span>Saved Last</span>
             <span>Change</span>
-            <span>Updated</span>
+            <span>Source</span>
           </div>
           ${visibleProducts.map(product => {
             const item = getInventoryById(product.inventoryId);
             const supplier = getSupplierById(product.supplierId);
             const directionClass = product.direction === 'up' ? 'increase' : product.direction === 'down' ? 'decrease' : 'flat';
             const directionLabel = product.direction === 'up' ? 'Up' : product.direction === 'down' ? 'Down' : 'Flat';
+            const sourceLabel = getSupplierPriceSourceLabel(product);
+            const sourceClass = sourceLabel === 'Demo estimate' ? 'demo' : 'manual';
 
             return `
               <div class="supplier-product-row">
@@ -3731,7 +3742,10 @@ function renderSuppliers() {
                 <span>${formatMoney(product.currentPrice)}</span>
                 <span>${product.lastPrice === null ? 'N/A' : formatMoney(product.lastPrice)}</span>
                 <span><span class="price-badge ${directionClass}">${directionLabel} ${product.variationPercent ? `${product.variationPercent > 0 ? '+' : ''}${product.variationPercent.toFixed(1)}%` : '0.0%'}</span></span>
-                <span>${escapeHTML(formatShortDate(product.lastUpdatedAt))}</span>
+                <span>
+                  <span class="source-badge ${sourceClass}">${escapeHTML(sourceLabel)}</span>
+                  <small class="supplier-row-date">${escapeHTML(formatShortDate(product.lastUpdatedAt))}</small>
+                </span>
               </div>
             `;
           }).join('')}

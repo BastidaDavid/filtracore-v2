@@ -665,7 +665,7 @@
           <div>
             <span class="section-label">Procurement Intelligence</span>
             <h2>Suppliers</h2>
-            <p>Connect inventory, pricing, preferred vendors, and purchase orders in one operational view.</p>
+            <p>Connect inventory, saved supplier pricing, preferred vendors, and purchase orders in one operational view. Prices are manual or estimated until live supplier feeds are connected.</p>
           </div>
         </div>
       </div>
@@ -684,15 +684,15 @@
         </div>
 
         <div class="module-kpi-card">
-          <span>Price Changes</span>
+          <span>Saved Price Changes</span>
           <strong id="supplier-price-changes-kpi">0</strong>
-          <small>Tracked against last price</small>
+          <small>Manual or estimated history</small>
         </div>
 
         <div class="module-kpi-card warning">
-          <span>Increase Alerts</span>
+          <span>Saved Increase Alerts</span>
           <strong id="supplier-increase-alerts-kpi">0</strong>
-          <small>Products trending up</small>
+          <small>Based on saved prices</small>
         </div>
 
         <div class="module-kpi-card critical">
@@ -702,9 +702,9 @@
         </div>
 
         <div class="module-kpi-card">
-          <span>Best Supplier</span>
+          <span>Lowest Saved Supplier</span>
           <strong id="supplier-best-suggestion-kpi">N/A</strong>
-          <small>Most frequent lowest price</small>
+          <small>Not live supplier pricing</small>
         </div>
       </div>
 
@@ -776,7 +776,7 @@
         <div class="module-panel form-panel supplier-price-panel">
           <div class="panel-heading panel-heading-clean">
             <h3>Track Product Price</h3>
-            <p>Attach suppliers to existing inventory items.</p>
+            <p>Attach suppliers to existing inventory items. Enter real quote prices manually when available.</p>
           </div>
 
           <form id="supplier-product-form" class="module-form premium-form supplier-product-form-grid">
@@ -816,7 +816,7 @@
         <div class="module-panel supplier-comparison-panel">
           <div class="panel-heading panel-heading-clean">
             <h3>Smart Comparison</h3>
-            <p>Lowest price, spread, and recommended supplier by item.</p>
+            <p>Compares saved prices only. Demo seeded prices are estimates, not live supplier quotes.</p>
           </div>
           <div id="supplier-comparison-list" class="supplier-comparison-list">
             <p class="empty-state">No supplier pricing yet.</p>
@@ -825,8 +825,8 @@
 
         <div class="module-panel list-panel supplier-products-panel">
           <div class="panel-heading panel-heading-clean">
-            <h3>Price Tracking</h3>
-            <p>Current price, last price, and movement by supplier.</p>
+            <h3>Saved Price Tracking</h3>
+            <p>Current saved price, last saved price, and movement by supplier. Demo values are estimates until replaced with real quotes.</p>
           </div>
           <div id="supplier-products-list" class="module-list premium-list supplier-products-list">
             <p class="empty-state">No supplier products tracked yet.</p>

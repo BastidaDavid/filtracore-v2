@@ -1277,7 +1277,7 @@ async function ensureSupplierSeedData(db, tenantId) {
           item.name,
           currentPrice,
           previousPrice,
-          `Seeded supplier price for ${item.name}`
+          `Demo estimated supplier price for ${item.name}; replace with a real quote or supplier feed before purchasing.`
         ]
       )
 
@@ -1303,7 +1303,7 @@ async function ensureSupplierSeedData(db, tenantId) {
           item.inventory_id,
           currentPrice,
           previousPrice,
-          `Initial procurement baseline for ${supplier.name}`
+          `Demo procurement baseline for ${supplier.name}; not live supplier pricing.`
         ]
       )
     }
