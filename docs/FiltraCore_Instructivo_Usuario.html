@@ -1,0 +1,593 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <title>Instructivo FiltraCore</title>
+  <style>
+    @page {
+      size: Letter;
+      margin: 0.72in;
+    }
+
+    :root {
+      --ink: #101827;
+      --muted: #5d6b82;
+      --soft: #eef4f8;
+      --line: #dbe5ee;
+      --accent: #1f9d72;
+      --accent-dark: #0d6b4c;
+      --blue: #2867b2;
+      --amber: #b7791f;
+      --red: #b42318;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      color: var(--ink);
+      font-family: Arial, Helvetica, sans-serif;
+      font-size: 10.8pt;
+      line-height: 1.48;
+      background: #ffffff;
+    }
+
+    .cover {
+      min-height: 8.6in;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      padding: 0.2in 0;
+      page-break-after: always;
+    }
+
+    .brand-mark {
+      width: 64px;
+      height: 64px;
+      display: grid;
+      place-items: center;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      color: var(--accent-dark);
+      font-size: 22pt;
+      font-weight: 800;
+      margin-bottom: 26px;
+      background: linear-gradient(135deg, #ffffff, #eaf8f3);
+    }
+
+    h1 {
+      margin: 0 0 12px;
+      font-size: 34pt;
+      line-height: 1;
+      letter-spacing: -1.4px;
+    }
+
+    h2 {
+      margin: 28px 0 10px;
+      padding-top: 4px;
+      color: var(--accent-dark);
+      font-size: 17pt;
+      line-height: 1.15;
+      page-break-after: avoid;
+    }
+
+    h3 {
+      margin: 18px 0 8px;
+      color: #172033;
+      font-size: 12.6pt;
+      page-break-after: avoid;
+    }
+
+    p {
+      margin: 0 0 9px;
+    }
+
+    .subtitle {
+      max-width: 6.4in;
+      color: var(--muted);
+      font-size: 13pt;
+      line-height: 1.45;
+    }
+
+    .meta {
+      margin-top: 30px;
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+      max-width: 7in;
+    }
+
+    .meta div,
+    .callout,
+    .section-card {
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: #fbfdff;
+    }
+
+    .meta div {
+      padding: 12px;
+    }
+
+    .meta span,
+    .eyebrow {
+      display: block;
+      color: var(--accent-dark);
+      font-size: 8.6pt;
+      font-weight: 800;
+      letter-spacing: 0.8px;
+      text-transform: uppercase;
+    }
+
+    .meta strong {
+      display: block;
+      margin-top: 4px;
+      font-size: 11pt;
+    }
+
+    .toc {
+      page-break-after: always;
+    }
+
+    .toc ol {
+      margin: 10px 0 0 20px;
+      padding: 0;
+      columns: 2;
+      column-gap: 28px;
+    }
+
+    .toc li {
+      break-inside: avoid;
+      margin: 0 0 7px;
+      padding-left: 4px;
+      color: var(--muted);
+    }
+
+    .callout {
+      margin: 14px 0;
+      padding: 14px 16px;
+      border-left: 5px solid var(--accent);
+    }
+
+    .callout strong {
+      color: var(--accent-dark);
+    }
+
+    .section-card {
+      margin: 12px 0 18px;
+      padding: 14px 16px;
+      page-break-inside: avoid;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 10px 0 16px;
+      page-break-inside: avoid;
+    }
+
+    th,
+    td {
+      padding: 8px 9px;
+      border: 1px solid var(--line);
+      vertical-align: top;
+      text-align: left;
+    }
+
+    th {
+      color: #253247;
+      background: var(--soft);
+      font-size: 9pt;
+      letter-spacing: 0.4px;
+      text-transform: uppercase;
+    }
+
+    td:first-child {
+      width: 28%;
+      font-weight: 700;
+    }
+
+    ul,
+    ol {
+      margin: 7px 0 10px 21px;
+      padding: 0;
+    }
+
+    li {
+      margin: 0 0 5px;
+    }
+
+    .workflow {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 8px;
+      margin: 12px 0 16px;
+      page-break-inside: avoid;
+    }
+
+    .step {
+      padding: 10px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: #ffffff;
+    }
+
+    .step span {
+      display: inline-flex;
+      width: 22px;
+      height: 22px;
+      align-items: center;
+      justify-content: center;
+      border-radius: 999px;
+      color: #ffffff;
+      background: var(--accent);
+      font-weight: 800;
+      font-size: 9pt;
+      margin-bottom: 6px;
+    }
+
+    .step strong {
+      display: block;
+      margin-bottom: 4px;
+    }
+
+    .badge {
+      display: inline-block;
+      padding: 3px 7px;
+      border-radius: 999px;
+      font-size: 8.5pt;
+      font-weight: 800;
+      background: #e7f7ef;
+      color: var(--accent-dark);
+    }
+
+    .badge.warning {
+      background: #fff4d8;
+      color: var(--amber);
+    }
+
+    .badge.critical {
+      background: #ffe8e5;
+      color: var(--red);
+    }
+
+    .page-break {
+      page-break-before: always;
+    }
+
+    .footer-note {
+      margin-top: 24px;
+      color: var(--muted);
+      font-size: 9.5pt;
+    }
+  </style>
+</head>
+<body>
+  <section class="cover">
+    <div class="brand-mark">FC</div>
+    <span class="eyebrow">Manual de entrenamiento</span>
+    <h1>Instructivo de uso de FiltraCore</h1>
+    <p class="subtitle">Guía en español para explicar y practicar cada sección del sistema: restaurantes, dashboard, máquinas, inventario, proveedores, filtros, mantenimiento, importación inteligente, reportes y administración.</p>
+    <div class="meta">
+      <div>
+        <span>Sistema</span>
+        <strong>FiltraCore</strong>
+      </div>
+      <div>
+        <span>Versión del manual</span>
+        <strong>Mayo 2026</strong>
+      </div>
+      <div>
+        <span>Uso recomendado</span>
+        <strong>Capacitación y práctica</strong>
+      </div>
+    </div>
+  </section>
+
+  <section class="toc">
+    <h2>Índice rápido</h2>
+    <ol>
+      <li>Concepto general del sistema</li>
+      <li>Flujo recomendado de trabajo</li>
+      <li>Acceso, cuenta y restaurantes</li>
+      <li>Dashboard principal</li>
+      <li>Machines / Máquinas</li>
+      <li>Inventory / Inventario</li>
+      <li>Suppliers / Proveedores</li>
+      <li>Filters / Filtros instalados</li>
+      <li>Maintenance / Mantenimiento</li>
+      <li>Import / Importación inteligente</li>
+      <li>Reports / Reportes</li>
+      <li>Accounts / Cuentas</li>
+      <li>Alertas, estados y mejores prácticas</li>
+      <li>Rutina de práctica</li>
+    </ol>
+    <div class="callout">
+      <strong>Idea principal:</strong> FiltraCore no es solo una lista de filtros. Es un sistema operativo para saber qué máquina existe, qué filtro usa, cuándo se instaló, cuándo se cambia, cuánto cuesta, quién lo mantiene, qué proveedor conviene y qué restaurante o área necesita atención.
+    </div>
+  </section>
+
+  <h2>1. Concepto general del sistema</h2>
+  <p>FiltraCore organiza la operación por restaurante o venue. Dentro de cada restaurante existen máquinas, productos de inventario, proveedores, filtros instalados, mantenimiento, reportes y alertas.</p>
+  <table>
+    <tr><th>Elemento</th><th>Qué significa</th><th>Ejemplo</th></tr>
+    <tr><td>Restaurante / Venue</td><td>Workspace separado con sus propios datos. Al cambiar de restaurante, cambian máquinas, filtros, inventario y reportes.</td><td>PT'S, CHI, EDR, McCall's Bar</td></tr>
+    <tr><td>Máquina</td><td>Activo físico que necesita filtros o mantenimiento.</td><td>Ice Machine, Steamer, Soda Machine</td></tr>
+    <tr><td>Inventario</td><td>Producto disponible para instalar o comprar.</td><td>EV9781-12, AR-4000-P</td></tr>
+    <tr><td>Filtro instalado</td><td>Relación entre una máquina y un producto de inventario instalado en una fecha.</td><td>Ice Machine con EV9781-12</td></tr>
+    <tr><td>Mantenimiento</td><td>Acción técnica registrada para inspección, PSI, reemplazo o corrección.</td><td>Filter Replacement, Critical Inspection</td></tr>
+    <tr><td>Proveedor</td><td>Empresa que vende productos relacionados al inventario.</td><td>Sysco, Restaurant Depot, Amazon Business</td></tr>
+  </table>
+
+  <h2>2. Flujo recomendado de trabajo</h2>
+  <div class="workflow">
+    <div class="step"><span>1</span><strong>Elegir restaurante</strong><p>Selecciona el workspace correcto antes de modificar datos.</p></div>
+    <div class="step"><span>2</span><strong>Registrar inventario</strong><p>Agrega productos, reorder number, stock y costo.</p></div>
+    <div class="step"><span>3</span><strong>Crear máquinas</strong><p>Define ubicación, marca, modelo y QR del activo.</p></div>
+    <div class="step"><span>4</span><strong>Asignar filtros</strong><p>Instala filtros desde inventario y genera ciclo de reemplazo.</p></div>
+  </div>
+  <div class="workflow">
+    <div class="step"><span>5</span><strong>Conectar proveedores</strong><p>Asocia varios proveedores a un mismo producto y compara precios.</p></div>
+    <div class="step"><span>6</span><strong>Registrar mantenimiento</strong><p>Documenta inspecciones, PSI, reemplazos y técnicos.</p></div>
+    <div class="step"><span>7</span><strong>Revisar reportes</strong><p>Consulta costos, riesgos, stock bajo y mantenimiento pendiente.</p></div>
+    <div class="step"><span>8</span><strong>Importar hojas</strong><p>Usa Smart Import para cargar datos desde fotos, PDFs o spreadsheets.</p></div>
+  </div>
+
+  <h2>3. Acceso, cuenta y restaurantes</h2>
+  <div class="section-card">
+    <h3>Login</h3>
+    <p>Permite entrar al sistema con usuario y contraseña. También existe creación de cuenta para registrar un nuevo negocio.</p>
+    <table>
+      <tr><th>Acción</th><th>Qué hace</th></tr>
+      <tr><td>Sign In</td><td>Inicia sesión y carga los restaurantes o workspaces asociados al usuario.</td></tr>
+      <tr><td>Create Account</td><td>Crea una cuenta nueva con nombre del negocio, responsable, email, contraseña y tipo de negocio.</td></tr>
+      <tr><td>Back to Login</td><td>Regresa al formulario de inicio de sesión.</td></tr>
+    </table>
+  </div>
+  <div class="section-card">
+    <h3>Choose Restaurant</h3>
+    <p>Esta pantalla aparece cuando el usuario tiene varios restaurantes bajo la misma cuenta. Cada tarjeta muestra cuántas máquinas, filtros e inventario existen en ese restaurante.</p>
+    <table>
+      <tr><th>Elemento</th><th>Uso</th></tr>
+      <tr><td>Restaurant card</td><td>Abre ese restaurante y carga solo sus datos.</td></tr>
+      <tr><td>Refresh</td><td>Vuelve a consultar la lista de restaurantes disponibles.</td></tr>
+      <tr><td>+</td><td>Abre el formulario para crear un workspace nuevo.</td></tr>
+      <tr><td>Switch Restaurant</td><td>Desde el sistema principal, regresa al selector para cambiar de restaurante.</td></tr>
+      <tr><td>Sign Out</td><td>Cierra sesión.</td></tr>
+    </table>
+  </div>
+
+  <h2>4. Dashboard principal</h2>
+  <p>El dashboard resume la salud operativa del restaurante seleccionado. Es la vista para revisar rápidamente riesgos, costos, próximos reemplazos y estado general.</p>
+  <table>
+    <tr><th>Bloque</th><th>Para qué sirve</th><th>Acción recomendada</th></tr>
+    <tr><td>KPI cards</td><td>Muestran máquinas, filtros, alertas, costo mensual, riesgo y otros indicadores.</td><td>Revisar al iniciar turno o antes de planear mantenimiento.</td></tr>
+    <tr><td>At Risk / Alerts</td><td>Tarjetas clickeables para filtrar máquinas o filtros con riesgo.</td><td>Entrar a la lista y atender primero lo crítico.</td></tr>
+    <tr><td>Facility Overview</td><td>Agrupa restaurantes o zonas con máquinas y filtros.</td><td>Validar que cada venue tenga sus máquinas correctas.</td></tr>
+    <tr><td>PSI Analytics</td><td>Resume lecturas de presión y filtros fuera de rango.</td><td>Usar para detectar filtros saturados o presión anormal.</td></tr>
+    <tr><td>Upcoming Replacements</td><td>Lista filtros próximos a vencer.</td><td>Planear compra y mantenimiento antes de que sea crítico.</td></tr>
+    <tr><td>Smart Setup</td><td>Checklist flotante de configuración inicial.</td><td>Usarlo como guía para completar el setup.</td></tr>
+  </table>
+
+  <h2 class="page-break">5. Machines / Máquinas</h2>
+  <p>Esta sección registra y administra los activos físicos. Una máquina debe existir antes de asignarle filtros o mantenimiento.</p>
+  <table>
+    <tr><th>Campo del formulario</th><th>Qué significa</th></tr>
+    <tr><td>Machine Name</td><td>Nombre visible del activo. Ejemplo: Ice Machine 1.</td></tr>
+    <tr><td>Machine Type</td><td>Tipo operativo. Ejemplo: Coffee, Ice, Soda, Steamer.</td></tr>
+    <tr><td>Equipment Category</td><td>Categoría más amplia. Ejemplo: Kitchen, Beverage, Water, HVAC.</td></tr>
+    <tr><td>Location</td><td>Área general donde está la máquina.</td></tr>
+    <tr><td>Department</td><td>Departamento responsable. Ejemplo: Beverage Ops.</td></tr>
+    <tr><td>Brand / Model</td><td>Marca y modelo del fabricante.</td></tr>
+    <tr><td>Serial Number</td><td>Número de serie físico del equipo.</td></tr>
+    <tr><td>Building / Floor / Zone</td><td>Ubicación jerárquica para edificios grandes.</td></tr>
+    <tr><td>Exact Location</td><td>Detalle preciso: pared, estación, cuarto o punto donde irá el QR.</td></tr>
+    <tr><td>Machine ID</td><td>Código interno de activo. Ejemplo: ICE-001.</td></tr>
+  </table>
+  <table>
+    <tr><th>Acción</th><th>Resultado</th></tr>
+    <tr><td>Save Machine</td><td>Crea la máquina dentro del restaurante seleccionado.</td></tr>
+    <tr><td>Search</td><td>Filtra por nombre, tipo, ubicación, filtro o estado.</td></tr>
+    <tr><td>QR / Print QR</td><td>Abre o imprime el QR para identificar la máquina físicamente.</td></tr>
+    <tr><td>Delete</td><td>Elimina la máquina y los datos conectados según las reglas del sistema.</td></tr>
+  </table>
+  <div class="callout"><strong>Práctica:</strong> crea una máquina de prueba, asígnale ubicación exacta y revisa si aparece en el dashboard y en los selects de filtros y mantenimiento.</div>
+
+  <h2>6. Inventory / Inventario</h2>
+  <p>Inventario contiene los productos que existen para instalar o comprar. El sistema usa estos items para filtros, proveedores, costos, reportes y órdenes de compra.</p>
+  <table>
+    <tr><th>Campo</th><th>Uso</th></tr>
+    <tr><td>Filter Name</td><td>Nombre del producto de inventario.</td></tr>
+    <tr><td>Category</td><td>Categoría operativa: Ice, Soda, Coffee, Steamer, Water.</td></tr>
+    <tr><td>Reorder Number</td><td>Número para reordenar el filtro con proveedor o fabricante.</td></tr>
+    <tr><td>Filter Type</td><td>Tipo o marca de filtro. Ejemplo: PENTAIR EVERPURE.</td></tr>
+    <tr><td>Vendor</td><td>Proveedor principal o referencia histórica.</td></tr>
+    <tr><td>Stock Quantity</td><td>Cantidad disponible actualmente.</td></tr>
+    <tr><td>Unit Cost</td><td>Costo unitario usado para reportes y estimados.</td></tr>
+    <tr><td>Reorder Level</td><td>Nivel mínimo antes de alerta de bajo inventario.</td></tr>
+  </table>
+  <table>
+    <tr><th>Indicador</th><th>Significado</th></tr>
+    <tr><td><span class="badge">Available</span></td><td>Hay stock suficiente.</td></tr>
+    <tr><td><span class="badge warning">Low Stock</span></td><td>El stock está en o por debajo del nivel de reorden.</td></tr>
+    <tr><td><span class="badge critical">Reorder</span></td><td>Stock en cero o necesita compra inmediata.</td></tr>
+  </table>
+  <div class="callout"><strong>Importante:</strong> cuando instalas un filtro o registras ciertos reemplazos, FiltraCore puede descontar inventario automáticamente.</div>
+
+  <h2 class="page-break">7. Suppliers / Proveedores</h2>
+  <p>Proveedores conecta costos reales con inventario. El objetivo es comparar precios por producto y preparar compras inteligentes.</p>
+  <h3>Dashboard de proveedores</h3>
+  <table>
+    <tr><th>KPI</th><th>Qué muestra</th></tr>
+    <tr><td>Total Suppliers</td><td>Cantidad de proveedores activos e inactivos.</td></tr>
+    <tr><td>Monitored Products</td><td>Productos de inventario que ya tienen precio monitoreado.</td></tr>
+    <tr><td>Price Changes</td><td>Productos con precio actual distinto al último precio.</td></tr>
+    <tr><td>Increase Alerts</td><td>Precios que subieron.</td></tr>
+    <tr><td>Critical Products</td><td>Productos monitoreados que están bajos o necesitan reorden.</td></tr>
+    <tr><td>Best Supplier</td><td>Proveedor que aparece más veces como precio recomendado.</td></tr>
+  </table>
+  <h3>Formulario Add Supplier</h3>
+  <table>
+    <tr><th>Campo</th><th>Uso</th></tr>
+    <tr><td>Supplier Name</td><td>Nombre del proveedor. Ejemplo: Sysco.</td></tr>
+    <tr><td>Contact / Email / Phone</td><td>Datos de contacto para compras o soporte.</td></tr>
+    <tr><td>Website</td><td>URL del proveedor.</td></tr>
+    <tr><td>Category</td><td>Tipo de proveedor: Foodservice, Marketplace, OEM, Local.</td></tr>
+    <tr><td>Status</td><td>Active si se puede usar; Inactive si queda archivado.</td></tr>
+    <tr><td>Notes</td><td>Condiciones, lead time, cuenta, contrato o comentarios.</td></tr>
+  </table>
+  <h3>Formulario Track Product Price</h3>
+  <table>
+    <tr><th>Campo</th><th>Uso</th></tr>
+    <tr><td>Inventory Item</td><td>Producto existente del inventario.</td></tr>
+    <tr><td>Supplier</td><td>Proveedor que ofrece ese producto.</td></tr>
+    <tr><td>Supplier SKU</td><td>Código del producto en el proveedor.</td></tr>
+    <tr><td>Current Price</td><td>Precio actual cotizado.</td></tr>
+    <tr><td>Notes</td><td>Fuente de la cotización, pack size, entrega o condiciones.</td></tr>
+  </table>
+  <h3>Smart Comparison y Price Tracking</h3>
+  <p><strong>Smart Comparison</strong> compara proveedores por item y sugiere el menor precio. <strong>Price Tracking</strong> muestra precio actual, último precio, variación y fecha de actualización.</p>
+  <table>
+    <tr><th>Indicador</th><th>Significado</th></tr>
+    <tr><td>Up</td><td>El precio subió contra el último precio registrado.</td></tr>
+    <tr><td>Down</td><td>El precio bajó y puede representar ahorro.</td></tr>
+    <tr><td>Flat</td><td>El precio no cambió o no hay historial suficiente.</td></tr>
+  </table>
+  <h3>Purchase Orders</h3>
+  <table>
+    <tr><th>Estado</th><th>Uso</th></tr>
+    <tr><td>Draft</td><td>Orden en preparación.</td></tr>
+    <tr><td>Sent</td><td>Orden enviada al proveedor.</td></tr>
+    <tr><td>Received</td><td>Producto recibido.</td></tr>
+    <tr><td>Cancelled</td><td>Orden cancelada.</td></tr>
+  </table>
+
+  <h2 class="page-break">8. Filters / Filtros instalados</h2>
+  <p>Filters asigna productos de inventario a máquinas reales. Aquí nace el ciclo de vida del filtro: fecha de instalación, PSI, cantidad y fecha esperada de reemplazo.</p>
+  <table>
+    <tr><th>Campo</th><th>Qué hace</th></tr>
+    <tr><td>Machine</td><td>Selecciona la máquina donde se instala el filtro.</td></tr>
+    <tr><td>Filter Product</td><td>Selecciona el producto desde inventario.</td></tr>
+    <tr><td>Filter Quantity</td><td>Cantidad de filtros instalados en esa máquina.</td></tr>
+    <tr><td>Current PSI</td><td>PSI base al momento de instalación.</td></tr>
+    <tr><td>PSI Min / PSI Max</td><td>Rango esperado para detectar valores fuera de operación normal.</td></tr>
+    <tr><td>Lifespan Months</td><td>Ciclo esperado de reemplazo.</td></tr>
+    <tr><td>Installation Date</td><td>Fecha real de instalación.</td></tr>
+    <tr><td>Replacement Due Date</td><td>Fecha estimada para reemplazo.</td></tr>
+  </table>
+  <table>
+    <tr><th>Acción</th><th>Resultado</th></tr>
+    <tr><td>Assign Filter</td><td>Crea filtro instalado, descuenta inventario y alimenta dashboard/reportes.</td></tr>
+    <tr><td>Healthy / Watch / Critical</td><td>Filtros de estado clickeable para revisar listas por prioridad.</td></tr>
+    <tr><td>Search</td><td>Busca por máquina, producto, reorder number, status o fecha.</td></tr>
+  </table>
+  <div class="callout"><strong>Regla práctica:</strong> primero debe existir inventario y máquina. Después se asigna el filtro.</div>
+
+  <h2>9. Maintenance / Mantenimiento</h2>
+  <p>Mantenimiento documenta inspecciones, correcciones, reemplazos, PSI y técnico responsable. Es la bitácora operativa del sistema.</p>
+  <table>
+    <tr><th>Campo</th><th>Uso</th></tr>
+    <tr><td>Machine</td><td>Máquina atendida.</td></tr>
+    <tr><td>Filter</td><td>Filtro atendido. Puede ser opcional para inspección general.</td></tr>
+    <tr><td>Maintenance Type</td><td>General Inspection, Warning Review, Critical Inspection o Filter Replacement.</td></tr>
+    <tr><td>Technician</td><td>Persona o proveedor que hizo el servicio.</td></tr>
+    <tr><td>Priority</td><td>Routine, Due Soon o Critical. Si se deja vacío, se maneja como Auto.</td></tr>
+    <tr><td>Inspection Result</td><td>Pass, Watch, Fail o Corrected.</td></tr>
+    <tr><td>Replacement Filter</td><td>Solo se usa cuando el tipo incluye reemplazo.</td></tr>
+    <tr><td>Current PSI / Corrected PSI</td><td>Muestra el PSI actual y permite registrar el nuevo PSI después del servicio.</td></tr>
+    <tr><td>PSI History</td><td>Historial visual de lecturas del filtro seleccionado.</td></tr>
+    <tr><td>Date / Next Due Date</td><td>Fecha del servicio y próxima fecha esperada.</td></tr>
+    <tr><td>Notes</td><td>Notas, causa raíz o corrección realizada.</td></tr>
+  </table>
+  <table>
+    <tr><th>Acción</th><th>Resultado</th></tr>
+    <tr><td>Log Maintenance</td><td>Guarda el registro, actualiza PSI, crea historial y puede descontar inventario si hubo reemplazo.</td></tr>
+    <tr><td>Generate Maintenance Report</td><td>Genera resumen de mantenimiento pendiente, acciones completadas, PSI y reemplazos.</td></tr>
+    <tr><td>Print / Save PDF</td><td>Permite imprimir o guardar el reporte de mantenimiento.</td></tr>
+  </table>
+
+  <h2 class="page-break">10. Import / Importación inteligente</h2>
+  <p>Smart Import convierte fotos, PDFs, spreadsheets, CSVs o texto pegado en registros reales de FiltraCore.</p>
+  <table>
+    <tr><th>Elemento</th><th>Uso</th></tr>
+    <tr><td>File</td><td>Permite cargar CSV, TSV, XLSX, XLS, PDF, imagen o texto.</td></tr>
+    <tr><td>Pasted Sheet Text</td><td>Permite pegar texto extraído de una hoja de filtros.</td></tr>
+    <tr><td>Preview Import</td><td>Detecta venue, máquina, reorder number, filter type y cantidad antes de crear registros.</td></tr>
+    <tr><td>Detected Records</td><td>Tabla de revisión para confirmar si la detección está correcta.</td></tr>
+    <tr><td>Apply Import</td><td>Crea o actualiza facilities, machines, inventory y filters.</td></tr>
+  </table>
+  <div class="callout"><strong>Mejor práctica:</strong> siempre revisa el preview antes de aplicar. Si una fila está mal detectada, corrige el texto o la hoja y vuelve a generar preview.</div>
+
+  <h2>11. Reports / Reportes</h2>
+  <p>Reportes consolida información para explicar el estado operativo y financiero del restaurante.</p>
+  <table>
+    <tr><th>Bloque</th><th>Qué muestra</th></tr>
+    <tr><td>Total Spend</td><td>Costo estimado de filtros instalados.</td></tr>
+    <tr><td>Potential Savings</td><td>Ahorro potencial o exposición evitada por mantenimiento preventivo.</td></tr>
+    <tr><td>Risk Exposure</td><td>Estimado económico de riesgo activo.</td></tr>
+    <tr><td>Pending Maintenance</td><td>Cantidad de items Watch o Critical.</td></tr>
+    <tr><td>System Health</td><td>Máquinas totales, máquinas en riesgo, filtros instalados y alertas.</td></tr>
+    <tr><td>Filter Spend</td><td>Costo promedio, gasto mensual y gasto anual estimado.</td></tr>
+    <tr><td>Stock Control</td><td>Total de inventario, low stock, reorder needed y valor de inventario.</td></tr>
+  </table>
+  <table>
+    <tr><th>Acción</th><th>Resultado</th></tr>
+    <tr><td>Generate Summary</td><td>Crea un resumen operativo con los datos actuales.</td></tr>
+    <tr><td>Print Report</td><td>Abre impresión para guardar o imprimir el reporte.</td></tr>
+  </table>
+
+  <h2>12. Accounts / Cuentas</h2>
+  <p>Accounts es una vista administrativa. Permite revisar usuarios y negocios registrados, especialmente para cuentas con permiso de administrador o superadmin.</p>
+  <table>
+    <tr><th>Elemento</th><th>Uso</th></tr>
+    <tr><td>Total Users</td><td>Número total de usuarios registrados.</td></tr>
+    <tr><td>Businesses</td><td>Número de negocios o tenants.</td></tr>
+    <tr><td>Demo Users</td><td>Cuentas de demostración.</td></tr>
+    <tr><td>Brain Users</td><td>Cuentas administrativas especiales.</td></tr>
+    <tr><td>Refresh</td><td>Actualiza la lista de cuentas.</td></tr>
+  </table>
+
+  <h2 class="page-break">13. Alertas, estados y mejores prácticas</h2>
+  <table>
+    <tr><th>Estado</th><th>Qué significa</th><th>Qué hacer</th></tr>
+    <tr><td><span class="badge">Healthy</span></td><td>El elemento está dentro de condiciones normales.</td><td>Monitorear en rutina normal.</td></tr>
+    <tr><td><span class="badge warning">Watch</span></td><td>Requiere seguimiento o mantenimiento pronto.</td><td>Programar revisión y confirmar inventario.</td></tr>
+    <tr><td><span class="badge critical">Critical</span></td><td>Riesgo alto o atención inmediata.</td><td>Registrar inspección, corregir PSI o reemplazar filtro.</td></tr>
+    <tr><td><span class="badge warning">Low Stock</span></td><td>Inventario llegó al nivel mínimo.</td><td>Comparar proveedores y preparar orden de compra.</td></tr>
+    <tr><td><span class="badge critical">Reorder</span></td><td>No hay stock suficiente.</td><td>Crear PO o compra urgente.</td></tr>
+  </table>
+  <div class="section-card">
+    <h3>Buenas prácticas para explicar el sistema</h3>
+    <ul>
+      <li>Siempre empieza por confirmar el restaurante seleccionado.</li>
+      <li>Explica que inventario es el catálogo de productos y filtros instalados es el uso real en máquinas.</li>
+      <li>Al registrar una máquina, llena ubicación exacta para que el QR tenga valor operativo.</li>
+      <li>Al asignar filtro, revisa cantidad y stock antes de guardar.</li>
+      <li>Usa mantenimiento para documentar lo que pasó, no solo para cerrar alertas.</li>
+      <li>En proveedores, compara precio antes de comprar y deja notas de cotización.</li>
+      <li>En reportes, usa los KPIs para contar la historia: costo, riesgo, stock y próximos reemplazos.</li>
+    </ul>
+  </div>
+
+  <h2>14. Rutina de práctica</h2>
+  <p>Usa esta secuencia para practicar una demostración completa de FiltraCore:</p>
+  <ol>
+    <li>Inicia sesión y selecciona un restaurante.</li>
+    <li>Revisa el Dashboard y menciona máquinas, filtros, alertas y próximos reemplazos.</li>
+    <li>En Inventory, agrega un producto de prueba con reorder number, stock, costo y reorder level.</li>
+    <li>En Machines, crea una máquina de prueba con ubicación exacta y machine ID.</li>
+    <li>En Filters, asigna el producto de inventario a la máquina y define fechas de instalación y reemplazo.</li>
+    <li>En Suppliers, agrega un proveedor, vincula el producto y registra un precio.</li>
+    <li>En Maintenance, registra una inspección o reemplazo con técnico, PSI y notas.</li>
+    <li>En Reports, genera un resumen y explica cómo cambian los indicadores.</li>
+    <li>En Import, pega una fila tipo hoja de filtros, genera preview y explica qué registros crearía.</li>
+  </ol>
+  <div class="callout">
+    <strong>Frase útil para vender o capacitar:</strong> “FiltraCore conecta la máquina, el filtro, el inventario, el proveedor, el costo y el mantenimiento para que el operador sepa qué comprar, cuándo cambiarlo y qué riesgo tiene cada ubicación.”
+  </div>
+
+  <p class="footer-note">Documento generado para entrenamiento interno de FiltraCore. Mantener actualizado cuando cambien formularios, endpoints o módulos del sistema.</p>
+</body>
+</html>
