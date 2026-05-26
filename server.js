@@ -1310,6 +1310,107 @@ async function ensureSupplierSeedData(db, tenantId) {
   }
 }
 
+async function ensureStarterPurchaseOrders(db, tenantId) {
+  const existingOrder = await db.query('SELECT purchase_order_id FROM purchase_orders WHERE tenant_id = $1 LIMIT 1', [tenantId])
+  if (existingOrder.rowCount > 0) return
+
+  const supplierResult = await db.query(
+    `
+    SELECT supplier_id
+    FROM suppliers
+    WHERE tenant_id = $1
+    ORDER BY CASE WHEN LOWER(name) = 'sysco' THEN 0 ELSE 1 END, name ASC
+    LIMIT 1
+    `,
+    [tenantId]
+  )
+
+  if (supplierResult.rowCount === 0) return
+
+  const supplierId = Number(supplierResult.rows[0].supplier_id)
+  const productsResult = await db.query(
+    `
+    SELECT supplier_product_id, inventory_id, current_price
+    FROM supplier_products
+    WHERE tenant_id = $1
+      AND supplier_id = $2
+    ORDER BY product_name ASC, supplier_product_id ASC
+    LIMIT 3
+    `,
+    [tenantId, supplierId]
+  )
+
+  if (productsResult.rowCount === 0) return
+
+  const expectedDate = addMonths(new Date(), 1)
+  const items = productsResult.rows.map((row, index) => {
+    const quantity = index === 0 ? 4 : 2
+    const unitPrice = roundCurrency(row.current_price)
+
+    return {
+      supplierProductId: Number(row.supplier_product_id),
+      inventoryId: Number(row.inventory_id),
+      quantity,
+      unitPrice,
+      lineTotal: roundCurrency(quantity * unitPrice)
+    }
+  })
+  const totalAmount = items.reduce((total, item) => total + item.lineTotal, 0)
+  const orderResult = await db.query(
+    `
+    INSERT INTO purchase_orders
+    (
+      tenant_id,
+      supplier_id,
+      po_number,
+      status,
+      expected_date,
+      notes,
+      total_amount
+    )
+    VALUES ($1, $2, $3, 'Draft', $4, $5, $6)
+    RETURNING purchase_order_id
+    `,
+    [
+      tenantId,
+      supplierId,
+      `FC-PO-STRAT-${String(tenantId).padStart(3, '0')}`,
+      expectedDate,
+      'Starter purchase order for STRAT waterfilter replenishment demo.',
+      roundCurrency(totalAmount)
+    ]
+  )
+  const purchaseOrderId = Number(orderResult.rows[0].purchase_order_id)
+
+  for (const item of items) {
+    await db.query(
+      `
+      INSERT INTO purchase_order_items
+      (
+        tenant_id,
+        purchase_order_id,
+        inventory_id,
+        supplier_product_id,
+        quantity,
+        unit_price,
+        line_total,
+        received_quantity
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, $7, 0)
+      `,
+      [
+        tenantId,
+        purchaseOrderId,
+        item.inventoryId,
+        item.supplierProductId,
+        item.quantity,
+        item.unitPrice,
+        item.lineTotal
+      ]
+    )
+  }
+}
+
 async function findLinkedTenantByName(db, userId, name) {
   const result = await db.query(
     `
@@ -1367,6 +1468,67 @@ async function removeLegacyStratAggregateWorkspaces(db, userId) {
   }
 }
 
+async function removeLinkedWaterfilterVenueWorkspaces(db, userId, homeTenantId) {
+  const venueNames = [
+    ...groupWaterfilterRecordsByVenue().keys(),
+    'mccalls'
+  ].map(name => name.toLowerCase())
+
+  const linkedVenues = await db.query(
+    `
+    SELECT tenants.tenant_id
+    FROM user_tenant_access
+    INNER JOIN tenants ON tenants.tenant_id = user_tenant_access.tenant_id
+    WHERE user_tenant_access.user_id = $1
+      AND user_tenant_access.tenant_id <> $2
+      AND LOWER(tenants.name) = ANY($3::text[])
+    `,
+    [userId, homeTenantId, venueNames]
+  )
+
+  for (const row of linkedVenues.rows) {
+    await db.query('DELETE FROM tenants WHERE tenant_id = $1', [Number(row.tenant_id)])
+  }
+}
+
+async function ensureStratSingleWorkspace(db, userId, homeTenantId) {
+  if (!userId || !homeTenantId) return
+
+  await db.query(
+    'UPDATE tenants SET name = $1, identity_label = $2 WHERE tenant_id = $3',
+    ['The STRAT Hotel Casino', 'Hotel Casino Waterfilters', homeTenantId]
+  )
+
+  await removeLegacyStratAggregateWorkspaces(db, userId)
+  await removeLinkedWaterfilterVenueWorkspaces(db, userId, homeTenantId)
+
+  const existingBatch = await db.query(
+    'SELECT import_batch_id FROM import_batches WHERE tenant_id = $1 AND source_name = $2 LIMIT 1',
+    [homeTenantId, waterfilterSetupSourceName]
+  )
+
+  if (existingBatch.rowCount > 0) {
+    await ensureSupplierSeedData(db, homeTenantId)
+    await ensureStarterPurchaseOrders(db, homeTenantId)
+    return
+  }
+
+  await clearTenantOperationalData(db, homeTenantId)
+  await applyImportRecords(
+    { tenantId: homeTenantId },
+    waterfilterSetupRecords,
+    {
+      sourceName: waterfilterSetupSourceName,
+      sourceType: 'seed/waterfilters-photo',
+      aiUsed: false,
+      warnings: []
+    },
+    { bypassMachineLimit: true }
+  )
+  await ensureSupplierSeedData(db, homeTenantId)
+  await ensureStarterPurchaseOrders(db, homeTenantId)
+}
+
 async function ensureWaterfilterRestaurantWorkspaces(db, userId, homeTenantId) {
   if (!userId || !homeTenantId) return
 
@@ -1402,6 +1564,7 @@ async function ensureWaterfilterRestaurantWorkspaces(db, userId, homeTenantId) {
 
     if (existingBatch.rowCount > 0) {
       await ensureSupplierSeedData(db, tenantId)
+      await ensureStarterPurchaseOrders(db, tenantId)
       continue
     }
 
@@ -1418,6 +1581,7 @@ async function ensureWaterfilterRestaurantWorkspaces(db, userId, homeTenantId) {
       { bypassMachineLimit: true }
     )
     await ensureSupplierSeedData(db, tenantId)
+    await ensureStarterPurchaseOrders(db, tenantId)
   }
 }
 
@@ -1709,11 +1873,11 @@ function canonicalClientAccounts() {
   return [
     {
       email: stratAccountEmail,
-      password: process.env.STRAT_ACCOUNT_PASSWORD || 'Strat01',
-      businessName: 'PTS Sport and Wings',
-      fullName: 'Strat Admin',
-      businessType: 'Restaurant',
-      identityLabel: 'Strat',
+      password: process.env.STRAT_ACCOUNT_PASSWORD || 'StratDemo2026!',
+      businessName: 'The STRAT Hotel Casino',
+      fullName: 'STRAT Admin',
+      businessType: 'Casino',
+      identityLabel: 'Hotel Casino Waterfilters',
       candidates: ['strat01', 'armand01', 'armando01', 'ptslineops', 'ptskitchen@lineops.io']
     },
     {
@@ -1834,7 +1998,7 @@ async function seedCanonicalClientUsers() {
     })
 
     if (normalizeLoginIdentifier(account.email) === stratAccountEmail && session?.user?.id && session?.user?.tenantId) {
-      await ensureWaterfilterRestaurantWorkspaces(pool, Number(session.user.id), Number(session.user.tenantId))
+      await ensureStratSingleWorkspace(pool, Number(session.user.id), Number(session.user.tenantId))
     }
   }
 }
@@ -3108,6 +3272,8 @@ async function ensureWaterfilterSetupData(db, tenantId) {
     },
     { bypassMachineLimit: true }
   )
+  await ensureSupplierSeedData(db, tenantId)
+  await ensureStarterPurchaseOrders(db, tenantId)
 }
 
 async function createSession(userId) {
