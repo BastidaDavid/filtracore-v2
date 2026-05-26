@@ -219,6 +219,27 @@ CREATE TABLE supplier_products (
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE price_candidates (
+  price_candidate_id SERIAL PRIMARY KEY,
+  tenant_id INTEGER NOT NULL REFERENCES tenants(tenant_id) ON DELETE CASCADE,
+  inventory_id INTEGER REFERENCES inventory(inventory_id) ON DELETE CASCADE,
+  supplier_product_id INTEGER REFERENCES supplier_products(supplier_product_id) ON DELETE SET NULL,
+  supplier_name TEXT NOT NULL,
+  supplier_url TEXT,
+  source TEXT DEFAULT 'estimated_market',
+  unit_price NUMERIC(10,2) DEFAULT 0,
+  shipping_cost NUMERIC(10,2) DEFAULT 0,
+  availability TEXT,
+  lead_time_days INTEGER DEFAULT 0,
+  minimum_order_quantity INTEGER DEFAULT 1,
+  confidence_score NUMERIC(5,2) DEFAULT 0.5,
+  last_checked_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  notes TEXT,
+  status TEXT DEFAULT 'candidate',
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE TABLE purchase_orders (
   purchase_order_id SERIAL PRIMARY KEY,
   tenant_id INTEGER NOT NULL REFERENCES tenants(tenant_id) ON DELETE CASCADE,
@@ -283,6 +304,10 @@ CREATE INDEX suppliers_status_idx ON suppliers(tenant_id, status);
 CREATE INDEX supplier_products_tenant_id_idx ON supplier_products(tenant_id);
 CREATE INDEX supplier_products_inventory_id_idx ON supplier_products(tenant_id, inventory_id);
 CREATE INDEX supplier_products_supplier_id_idx ON supplier_products(tenant_id, supplier_id);
+CREATE INDEX price_candidates_tenant_id_idx ON price_candidates(tenant_id);
+CREATE INDEX price_candidates_inventory_id_idx ON price_candidates(tenant_id, inventory_id);
+CREATE INDEX price_candidates_status_idx ON price_candidates(tenant_id, status);
+CREATE INDEX price_candidates_supplier_product_id_idx ON price_candidates(supplier_product_id);
 CREATE INDEX purchase_orders_tenant_id_idx ON purchase_orders(tenant_id);
 CREATE INDEX purchase_orders_supplier_id_idx ON purchase_orders(tenant_id, supplier_id);
 CREATE INDEX purchase_order_items_order_id_idx ON purchase_order_items(purchase_order_id);

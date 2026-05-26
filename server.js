@@ -434,6 +434,35 @@ function mapPriceHistory(row) {
   }
 }
 
+function mapPriceCandidate(row) {
+  const unitPrice = toNumber(row.unit_price)
+  const shippingCost = toNumber(row.shipping_cost)
+
+  return {
+    id: Number(row.price_candidate_id),
+    inventoryId: Number(row.inventory_id),
+    supplierProductId: row.supplier_product_id === null || row.supplier_product_id === undefined ? null : Number(row.supplier_product_id),
+    supplierName: row.supplier_name || '',
+    supplierUrl: row.supplier_url || '',
+    source: row.source || '',
+    unitPrice,
+    shippingCost,
+    totalEstimatedPrice: roundCurrency(unitPrice + shippingCost),
+    availability: row.availability || '',
+    leadTimeDays: toNumber(row.lead_time_days),
+    minimumOrderQuantity: toNumber(row.minimum_order_quantity, 1),
+    confidenceScore: toNumber(row.confidence_score),
+    lastCheckedAt: row.last_checked_at,
+    notes: row.notes || '',
+    status: row.status || 'candidate',
+    inventoryName: row.inventory_name || '',
+    reorderNumber: row.reorder_number || '',
+    filterType: row.filter_type || '',
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
+  }
+}
+
 function mapPurchaseOrder(row) {
   return {
     id: Number(row.purchase_order_id),
@@ -690,6 +719,27 @@ async function ensureSchema() {
       updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
 
+    CREATE TABLE IF NOT EXISTS price_candidates (
+      price_candidate_id SERIAL PRIMARY KEY,
+      tenant_id INTEGER REFERENCES tenants(tenant_id) ON DELETE CASCADE,
+      inventory_id INTEGER REFERENCES inventory(inventory_id) ON DELETE CASCADE,
+      supplier_product_id INTEGER REFERENCES supplier_products(supplier_product_id) ON DELETE SET NULL,
+      supplier_name TEXT NOT NULL,
+      supplier_url TEXT,
+      source TEXT DEFAULT 'estimated_market',
+      unit_price NUMERIC(10,2) DEFAULT 0,
+      shipping_cost NUMERIC(10,2) DEFAULT 0,
+      availability TEXT,
+      lead_time_days INTEGER DEFAULT 0,
+      minimum_order_quantity INTEGER DEFAULT 1,
+      confidence_score NUMERIC(5,2) DEFAULT 0.5,
+      last_checked_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      notes TEXT,
+      status TEXT DEFAULT 'candidate',
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+
     CREATE TABLE IF NOT EXISTS purchase_orders (
       purchase_order_id SERIAL PRIMARY KEY,
       tenant_id INTEGER REFERENCES tenants(tenant_id) ON DELETE CASCADE,
@@ -787,6 +837,22 @@ async function ensureSchema() {
     ALTER TABLE supplier_products ADD COLUMN IF NOT EXISTS notes TEXT;
     ALTER TABLE supplier_products ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'active';
     ALTER TABLE supplier_products ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
+    ALTER TABLE price_candidates ADD COLUMN IF NOT EXISTS tenant_id INTEGER REFERENCES tenants(tenant_id) ON DELETE CASCADE;
+    ALTER TABLE price_candidates ADD COLUMN IF NOT EXISTS inventory_id INTEGER REFERENCES inventory(inventory_id) ON DELETE CASCADE;
+    ALTER TABLE price_candidates ADD COLUMN IF NOT EXISTS supplier_product_id INTEGER REFERENCES supplier_products(supplier_product_id) ON DELETE SET NULL;
+    ALTER TABLE price_candidates ADD COLUMN IF NOT EXISTS supplier_name TEXT;
+    ALTER TABLE price_candidates ADD COLUMN IF NOT EXISTS supplier_url TEXT;
+    ALTER TABLE price_candidates ADD COLUMN IF NOT EXISTS source TEXT DEFAULT 'estimated_market';
+    ALTER TABLE price_candidates ADD COLUMN IF NOT EXISTS unit_price NUMERIC(10,2) DEFAULT 0;
+    ALTER TABLE price_candidates ADD COLUMN IF NOT EXISTS shipping_cost NUMERIC(10,2) DEFAULT 0;
+    ALTER TABLE price_candidates ADD COLUMN IF NOT EXISTS availability TEXT;
+    ALTER TABLE price_candidates ADD COLUMN IF NOT EXISTS lead_time_days INTEGER DEFAULT 0;
+    ALTER TABLE price_candidates ADD COLUMN IF NOT EXISTS minimum_order_quantity INTEGER DEFAULT 1;
+    ALTER TABLE price_candidates ADD COLUMN IF NOT EXISTS confidence_score NUMERIC(5,2) DEFAULT 0.5;
+    ALTER TABLE price_candidates ADD COLUMN IF NOT EXISTS last_checked_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
+    ALTER TABLE price_candidates ADD COLUMN IF NOT EXISTS notes TEXT;
+    ALTER TABLE price_candidates ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'candidate';
+    ALTER TABLE price_candidates ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
     ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS tenant_id INTEGER REFERENCES tenants(tenant_id) ON DELETE CASCADE;
     ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS po_number TEXT;
     ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'Draft';
@@ -828,6 +894,10 @@ async function ensureSchema() {
     CREATE INDEX IF NOT EXISTS supplier_products_tenant_id_idx ON supplier_products(tenant_id);
     CREATE INDEX IF NOT EXISTS supplier_products_inventory_id_idx ON supplier_products(tenant_id, inventory_id);
     CREATE INDEX IF NOT EXISTS supplier_products_supplier_id_idx ON supplier_products(tenant_id, supplier_id);
+    CREATE INDEX IF NOT EXISTS price_candidates_tenant_id_idx ON price_candidates(tenant_id);
+    CREATE INDEX IF NOT EXISTS price_candidates_inventory_id_idx ON price_candidates(tenant_id, inventory_id);
+    CREATE INDEX IF NOT EXISTS price_candidates_status_idx ON price_candidates(tenant_id, status);
+    CREATE INDEX IF NOT EXISTS price_candidates_supplier_product_id_idx ON price_candidates(supplier_product_id);
     CREATE INDEX IF NOT EXISTS purchase_orders_tenant_id_idx ON purchase_orders(tenant_id);
     CREATE INDEX IF NOT EXISTS purchase_orders_supplier_id_idx ON purchase_orders(tenant_id, supplier_id);
     CREATE INDEX IF NOT EXISTS purchase_order_items_order_id_idx ON purchase_order_items(purchase_order_id);
@@ -1310,6 +1380,161 @@ async function ensureSupplierSeedData(db, tenantId) {
   }
 }
 
+const marketplacePriceCandidateProfiles = [
+  {
+    supplierName: 'Grainger',
+    supplierUrlBase: 'https://www.grainger.com/search?searchQuery=',
+    priceMultiplier: 1.08,
+    shippingCost: 0,
+    leadTimeDays: 3,
+    confidenceScore: 0.38,
+    availability: 'Market estimate'
+  },
+  {
+    supplierName: 'WebstaurantStore',
+    supplierUrlBase: 'https://www.webstaurantstore.com/search/',
+    priceMultiplier: 0.98,
+    shippingCost: 12,
+    leadTimeDays: 5,
+    confidenceScore: 0.35,
+    availability: 'Market estimate'
+  },
+  {
+    supplierName: 'Parts Town',
+    supplierUrlBase: 'https://www.partstown.com/search?q=',
+    priceMultiplier: 1.12,
+    shippingCost: 9,
+    leadTimeDays: 2,
+    confidenceScore: 0.34,
+    availability: 'Market estimate'
+  }
+]
+
+function candidateSearchToken(item) {
+  return encodeURIComponent(String(item.reorder_number || item.name || '').trim())
+}
+
+async function ensurePriceCandidateSeedData(db, tenantId) {
+  const existingCandidate = await db.query('SELECT price_candidate_id FROM price_candidates WHERE tenant_id = $1 LIMIT 1', [tenantId])
+  if (existingCandidate.rowCount > 0) return
+
+  const supplierProductsResult = await db.query(
+    `
+    SELECT
+      supplier_products.supplier_product_id,
+      supplier_products.inventory_id,
+      supplier_products.current_price,
+      supplier_products.supplier_sku,
+      suppliers.name AS supplier_name
+    FROM supplier_products
+    INNER JOIN suppliers
+      ON suppliers.supplier_id = supplier_products.supplier_id
+     AND suppliers.tenant_id = supplier_products.tenant_id
+    WHERE supplier_products.tenant_id = $1
+      AND supplier_products.status = 'active'
+    ORDER BY supplier_products.inventory_id ASC, supplier_products.current_price ASC
+    `,
+    [tenantId]
+  )
+
+  for (const row of supplierProductsResult.rows) {
+    await db.query(
+      `
+      INSERT INTO price_candidates
+      (
+        tenant_id,
+        inventory_id,
+        supplier_product_id,
+        supplier_name,
+        supplier_url,
+        source,
+        unit_price,
+        shipping_cost,
+        availability,
+        lead_time_days,
+        minimum_order_quantity,
+        confidence_score,
+        notes,
+        status
+      )
+      VALUES ($1, $2, $3, $4, '', 'seed_supplier_catalog', $5, 0, 'Catalog estimate', 3, 1, 0.62, $6, 'candidate')
+      `,
+      [
+        tenantId,
+        Number(row.inventory_id),
+        Number(row.supplier_product_id),
+        row.supplier_name,
+        roundCurrency(row.current_price),
+        `Estimated supplier catalog candidate for SKU ${row.supplier_sku || 'N/A'}. Verify quote before purchasing.`
+      ]
+    )
+  }
+
+  const inventoryResult = await db.query(
+    `
+    SELECT inventory.*
+    FROM inventory
+    WHERE tenant_id = $1
+    ORDER BY inventory_id ASC
+    `,
+    [tenantId]
+  )
+
+  const minPriceByInventory = new Map()
+  for (const row of supplierProductsResult.rows) {
+    const inventoryId = Number(row.inventory_id)
+    const price = toNumber(row.current_price)
+    const current = minPriceByInventory.get(inventoryId)
+
+    if (current === undefined || price < current) {
+      minPriceByInventory.set(inventoryId, price)
+    }
+  }
+
+  for (const item of inventoryResult.rows) {
+    const inventoryId = Number(item.inventory_id)
+    const basePrice = minPriceByInventory.get(inventoryId) || estimateSupplierBasePrice(item)
+    const searchToken = candidateSearchToken(item)
+
+    for (const profile of marketplacePriceCandidateProfiles) {
+      const unitPrice = roundCurrency(basePrice * profile.priceMultiplier)
+      await db.query(
+        `
+        INSERT INTO price_candidates
+        (
+          tenant_id,
+          inventory_id,
+          supplier_name,
+          supplier_url,
+          source,
+          unit_price,
+          shipping_cost,
+          availability,
+          lead_time_days,
+          minimum_order_quantity,
+          confidence_score,
+          notes,
+          status
+        )
+        VALUES ($1, $2, $3, $4, 'estimated_market', $5, $6, $7, $8, 1, $9, $10, 'candidate')
+        `,
+        [
+          tenantId,
+          inventoryId,
+          profile.supplierName,
+          `${profile.supplierUrlBase}${searchToken}`,
+          unitPrice,
+          roundCurrency(profile.shippingCost),
+          profile.availability,
+          profile.leadTimeDays,
+          profile.confidenceScore,
+          'Market price candidate generated from reorder number and product category. Not a live quote.'
+        ]
+      )
+    }
+  }
+}
+
 async function ensureStarterPurchaseOrders(db, tenantId) {
   const existingOrder = await db.query('SELECT purchase_order_id FROM purchase_orders WHERE tenant_id = $1 LIMIT 1', [tenantId])
   if (existingOrder.rowCount > 0) return
@@ -1509,6 +1734,7 @@ async function ensureStratSingleWorkspace(db, userId, homeTenantId) {
 
   if (existingBatch.rowCount > 0) {
     await ensureSupplierSeedData(db, homeTenantId)
+    await ensurePriceCandidateSeedData(db, homeTenantId)
     await ensureStarterPurchaseOrders(db, homeTenantId)
     return
   }
@@ -1526,6 +1752,7 @@ async function ensureStratSingleWorkspace(db, userId, homeTenantId) {
     { bypassMachineLimit: true }
   )
   await ensureSupplierSeedData(db, homeTenantId)
+  await ensurePriceCandidateSeedData(db, homeTenantId)
   await ensureStarterPurchaseOrders(db, homeTenantId)
 }
 
@@ -1564,6 +1791,7 @@ async function ensureWaterfilterRestaurantWorkspaces(db, userId, homeTenantId) {
 
     if (existingBatch.rowCount > 0) {
       await ensureSupplierSeedData(db, tenantId)
+      await ensurePriceCandidateSeedData(db, tenantId)
       await ensureStarterPurchaseOrders(db, tenantId)
       continue
     }
@@ -1581,6 +1809,7 @@ async function ensureWaterfilterRestaurantWorkspaces(db, userId, homeTenantId) {
       { bypassMachineLimit: true }
     )
     await ensureSupplierSeedData(db, tenantId)
+    await ensurePriceCandidateSeedData(db, tenantId)
     await ensureStarterPurchaseOrders(db, tenantId)
   }
 }
@@ -2201,6 +2430,26 @@ async function getState(auth, db = pool) {
       `,
       [tenantId]
     )
+    const priceCandidatesResult = await client.query(
+      `
+      SELECT
+        price_candidates.*,
+        inventory.name AS inventory_name,
+        inventory.reorder_number,
+        inventory.filter_type
+      FROM price_candidates
+      INNER JOIN inventory
+        ON inventory.inventory_id = price_candidates.inventory_id
+       AND inventory.tenant_id = price_candidates.tenant_id
+      WHERE price_candidates.tenant_id = $1
+        AND price_candidates.status = 'candidate'
+      ORDER BY
+        price_candidates.inventory_id ASC,
+        (price_candidates.unit_price + COALESCE(price_candidates.shipping_cost, 0)) ASC,
+        price_candidates.confidence_score DESC
+      `,
+      [tenantId]
+    )
     const purchaseOrdersResult = await client.query(
       `
       SELECT
@@ -2288,6 +2537,7 @@ async function getState(auth, db = pool) {
       suppliers: suppliersResult.rows.map(mapSupplier),
       supplierProducts: supplierProductsResult.rows.map(mapSupplierProduct),
       priceHistory: priceHistoryResult.rows.map(mapPriceHistory),
+      priceCandidates: priceCandidatesResult.rows.map(mapPriceCandidate),
       purchaseOrders,
       machineAccess
     }
@@ -3273,6 +3523,7 @@ async function ensureWaterfilterSetupData(db, tenantId) {
     { bypassMachineLimit: true }
   )
   await ensureSupplierSeedData(db, tenantId)
+  await ensurePriceCandidateSeedData(db, tenantId)
   await ensureStarterPurchaseOrders(db, tenantId)
 }
 
@@ -3747,6 +3998,7 @@ app.use('/api', requireAuth)
 app.use('/machines', requireAuth)
 app.use('/suppliers', requireAuth)
 app.use('/supplier-products', requireAuth)
+app.use('/price-candidates', requireAuth)
 app.use('/purchase-orders', requireAuth)
 
 app.get('/api/state', async (req, res) => {
@@ -4299,6 +4551,15 @@ app.post(['/api/supplier-products', '/supplier-products'], async (req, res) => {
     handleError(res, error, 'Failed to save supplier product')
   } finally {
     client.release()
+  }
+})
+
+app.get(['/api/price-candidates', '/price-candidates'], async (req, res) => {
+  try {
+    const state = await getState(req.auth)
+    res.json(state.priceCandidates)
+  } catch (error) {
+    handleError(res, error, 'Failed to fetch price candidates')
   }
 })
 
